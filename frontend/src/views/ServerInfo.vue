@@ -1,0 +1,257 @@
+<template>
+  <el-container>
+    <el-header style="display: flex; justify-content: space-between; align-items: center; padding: 0 20px; height: 60px;">
+      <el-button type="link" @click="gotoHome" style="font-size: 35px; font-weight: bold; margin-left: 10px;">N2Sys</el-button>
+      <h2>Server Information</h2>
+      <div style="display: flex; align-items: center;">
+        <el-button class="el-header-button" type="link" @click="gotoProfile(currentUser.id)" style="margin-left: 10px;">Profile</el-button>
+        <el-button class="el-header-button" type="link" @click="logout" style="margin-left: 10px;">Logout</el-button>
+      </div>
+    </el-header>
+
+    <el-main>
+      <el-card class="card-spacing">
+        <el-row>
+          <el-col :span="24">
+            <h2>Server Information</h2>
+            <el-divider />
+            <el-form label-width="150px">
+              <el-form-item label="Server Host">
+                <el-input v-model="server.host" disabled />
+              </el-form-item>
+              <el-form-item label="Server Port">
+                <el-input v-model="server.port" disabled />
+              </el-form-item>
+              <el-form-item label="Server Gateway">
+                <el-switch v-model="server.is_gateway" disabled />
+              </el-form-item>
+              <el-form-item label="Server Status">
+                {{ server.server_status }}
+              </el-form-item>
+              <el-form-item label="Mounted Home">
+                <el-switch v-model="server.is_separated_home" disabled />
+              </el-form-item>
+              <el-form-item label="OS Version">
+                {{ server.os_version }}
+              </el-form-item>
+              <el-form-item label="Kernel Version">
+                {{ server.kernel_version }}
+              </el-form-item>
+              <el-form-item label="Tags">
+                <template v-if="!currentUser.is_admin">
+                  <el-tag v-for="tag in server.tags" :key="tag.id">{{ tag.tag }}</el-tag>
+                </template>
+                <template v-else>
+                  <el-tag v-for="tag in server.tags" :key="tag.id" closable @close="removeServerTag(tag.id)">{{ tag.tag }}</el-tag>
+                  <el-button size="small" v-if="!show_new_server_tag" @click="showAddNewServerTag">+ New Tag</el-button>
+                  <el-input v-else v-model="new_server_tag_value" size="small" style="width:80px" @keyup.enter="confirmServerTagInput" @blur="confirmServerTagInput" />
+                </template>
+              </el-form-item>
+              <el-form-item label="IPMI Info">
+                <template v-if="currentUser.is_admin">
+                  <el-row>
+                    <el-col :span="18">
+                      <el-input v-model="server.ipmi" placeholder="IPMI Information" class="full-width-input" />
+                    </el-col>
+                    <el-col :span="6">
+                      <el-button type="primary" @click="saveIPMI">Save</el-button>
+                    </el-col>
+                  </el-row>
+                </template>
+                <template v-else>
+                  {{ server.ipmi || 'N/A' }}
+                </template>
+              </el-form-item>
+              <el-form-item v-if="currentUser.is_admin" label="Actions">
+                <el-button type="primary" class="button-spacing" @click="refreshServer">Refresh Server Status</el-button>
+              </el-form-item>
+            </el-form>
+          </el-col>
+        </el-row>
+      </el-card>
+
+      <el-card class="card-spacing">
+        <el-row>
+          <el-col :span="24">
+            <h2>Server Interfaces</h2>
+            <el-divider />
+            <el-table :data="server.interfaces" style="width: 100%">
+              <el-table-column prop="interface" label="Interface Name" />
+              <el-table-column label="Tags">
+                <template #default="{ row }">
+                  <template v-if="currentUser.is_admin">
+                    <el-tag v-for="tag in row.tags" :key="tag.id" closable @close="removeTag(tag.id)">{{ tag.tag }}</el-tag>
+                    <el-button size="small" v-if="!row.show_new_tag" @click="showAddNewTag(row)">+ New Tag</el-button>
+                    <el-input v-else v-model="new_tag_value" size="small" style="width:80px" @keyup.enter="confirmTagInput(row)" @blur="confirmTagInput(row)" />
+                  </template>
+                  <template v-else>
+                    <el-tag v-for="tag in row.tags" :key="tag.id">{{ tag.tag }}</el-tag>
+                  </template>
+                </template>
+              </el-table-column>
+              <el-table-column prop="pci_address" label="PCI Address" />
+              <el-table-column label="Connection">
+                <template #default="{ row }">
+                  <el-tag v-if="row.peer_interface" type="success">Direct</el-tag>
+                  <el-tag v-else-if="row.switch_id" type="info">Switch</el-tag>
+                  <el-tag v-else type="danger">Not Connected</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="Peer Name">
+                <template #default="{ row }">
+                  <div v-if="row.peer_interface">{{ row.peer_interface.server_host + ' : ' + row.peer_interface.interface }}</div>
+                  <div v-else-if="row.switch_id">{{ row.switch_name + ' : ' + row.switch_port_name }}</div>
+                  <div v-else>N/A</div>
+                </template>
+              </el-table-column>
+              <el-table-column label="Actions" v-if="currentUser.is_admin">
+                <template #default="{ row }">
+                  <el-button type="primary" @click="showLinkToDialog(row.id)">连接/断开</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-col>
+        </el-row>
+      </el-card>
+
+      <el-dialog title="连接设置" :visible.sync="showModal">
+        <el-radio-group v-model="connectionType">
+          <el-radio-button label="断开" />
+          <el-radio-button label="直连" />
+          <el-radio-button label="交换机" />
+        </el-radio-group>
+        <div v-if="connectionType === '直连'" style="margin-top:20px;">
+          <el-form>
+            <el-form-item label="Host">
+              <el-autocomplete v-model="directConnection.host" :fetch-suggestions="hostQuerySearch" placeholder="Server Hostname" />
+            </el-form-item>
+            <el-form-item label="Interface 名字">
+              <el-autocomplete v-model="directConnection.interfaceName" :fetch-suggestions="hostInterQuerySearch" placeholder="Interface Name" />
+            </el-form-item>
+          </el-form>
+        </div>
+        <div v-if="connectionType === '交换机'" style="margin-top:20px;">
+          <el-form>
+            <el-form-item label="交换机名字">
+              <el-autocomplete v-model="switchConnection.switchName" :fetch-suggestions="switchQuerySearch" placeholder="请输入交换机名字" @select="handleSelectSwitch" />
+            </el-form-item>
+            <el-form-item label="交换机端口号">
+              <el-input v-model="switchConnection.switchPort" type="number" />
+            </el-form-item>
+          </el-form>
+        </div>
+        <template #footer>
+          <el-button @click="showModal = false">取消</el-button>
+          <el-button type="primary" @click="saveChanges">保存</el-button>
+        </template>
+      </el-dialog>
+    </el-main>
+  </el-container>
+</template>
+
+<script setup>
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
+
+const router = useRouter()
+const route = useRoute()
+const currentUser = ref({ id: null, is_admin: false })
+const server = reactive({ host: '', port: '', is_gateway: false, server_status: '', is_separated_home: false, os_version: '', kernel_version: '', tags: [], ipmi: '', interfaces: [] })
+const switches = ref([])
+const server_inters = ref([])
+const current_interface_id = ref(null)
+const connectionType = ref('断开')
+const showModal = ref(false)
+const switchConnection = reactive({ switchName: '', switchPort: 0 })
+const directConnection = reactive({ host: '', interfaceName: '' })
+const new_tag_value = ref('')
+const new_server_tag_value = ref('')
+const old_tag_row_obj = ref(null)
+const show_new_server_tag = ref(false)
+
+onMounted(async () => {
+  currentUser.value.id = /* TODO: fetch current user id */ null
+  currentUser.value.is_admin = true
+  const id = route.params.id
+  try {
+    const res = await fetch(`/server/${id}`, { credentials: 'include' })
+    if (res.ok) server = await res.json()
+    // fetch interfaces and switches
+    const interRes = await fetch(`/server/${id}/interfaces`, { credentials: 'include' })
+    if (interRes.ok) server.interfaces = await interRes.json()
+    const swRes = await fetch('/switches/list', { credentials: 'include' })
+    if (swRes.ok) switches.value = await swRes.json()
+    server_inters.value = server.interfaces
+  } catch (e) {
+    console.error(e)
+  }
+})
+
+function removeServerTag(tag_id) {
+  fetch('/server/tag/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_id }) })
+    .then(r => r.ok && fetch(`/server/${route.params.id}`, { credentials: 'include' }).then(res => res.ok && (server.tags = server.tags.filter(t => t.id !== tag_id))))
+}
+
+function removeTag(tag_id) {
+  fetch('/interface/tag/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_id }) })
+    .then(r => r.ok && onMounted())
+}
+
+function confirmServerTagInput() {
+  const v = new_server_tag_value.value.trim()
+  show_new_server_tag.value = false
+  if (v) {
+    fetch('/server/tag/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: route.params.id, tag: v }) })
+      .then(r => r.ok && fetch(`/server/${route.params.id}`, { credentials: 'include' }).then(res => res.ok && (server.tags = [...server.tags, { id: Date.now(), tag: v }])))
+  }
+}
+
+function showAddNewServerTag() { new_server_tag_value.value = ''; show_new_server_tag.value = true }
+
+function showAddNewTag(row) { if (old_tag_row_obj.value) confirmTagInput(old_tag_row_obj.value); new_tag_value.value = ''; row.show_new_tag = true; old_tag_row_obj.value = row }
+
+function confirmTagInput(row) {
+  row.show_new_tag = false
+  const v = new_tag_value.value.trim()
+  old_tag_row_obj.value = null
+  if (v) {
+    fetch('/interface/tag/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interface_id: row.id, tag: v }) })
+      .then(r => r.ok && row.tags.push({ id: Date.now(), tag: v }))
+  }
+}
+
+function refreshServer() { fetch('/server/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: route.params.id }) }).then(() => location.reload()) }
+
+function hostQuerySearch(query, cb) { cb(server_inters.value.filter(s => s.host.toLowerCase().includes(query.toLowerCase())).map(s => ({ value: s.host }))) }
+
+function hostInterQuerySearch(query, cb) {
+  const srv = server_inters.value.find(s => s.host === directConnection.host)
+  const vals = srv ? srv.interfaces.filter(i => i.name.toLowerCase().includes(query.toLowerCase())).map(i => ({ value: i.name })) : []
+  cb(vals)
+}
+
+function switchQuerySearch(q, cb) { cb(switches.value.filter(s => s.name.toLowerCase().includes(q.toLowerCase())).map(s => ({ id: s.id, value: s.name }))) }
+
+function handleSelectSwitch(item) { switchConnection.switchName = item.value }
+
+function saveChanges() {
+  const action = connectionType.value
+  // implement connection logic
+}
+
+function saveIPMI() { fetch('/server/ipmi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: route.params.id, ipmi: server.ipmi }) }).then(() => ElMessage.success('IPMI info saved')) }
+
+function submitApplication() {}
+
+function logout() { router.push({ name: 'Login' }) }
+function gotoHome() { router.push({ name: 'Summary' }) }
+function gotoProfile(id) { router.push({ name: 'Profile', params: { id } }) }
+</script>
+
+<style scoped>
+.card-spacing { margin-bottom: 20px; }
+.button-spacing { margin-top: 20px; }
+.full-width-input { width: 100%; }
+.el-header-button { font-size: 16px; }
+</style>
