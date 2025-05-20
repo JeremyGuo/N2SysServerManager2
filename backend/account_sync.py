@@ -53,6 +53,10 @@ async def getConnection(srv: Server):
             if not os.path.exists(ssh_config_path):
                 os.makedirs(ssh_config_path)
             with open(ssh_config_file, 'w') as f:
+                f.write(f"Host {server.proxy_server.host}\n")
+                f.write(f"    HostName {server.proxy_server.host}\n")
+                f.write(f"    Port {server.proxy_server.port}\n")
+                f.write(f"\n")
                 f.write(f"Host {server.host}\n")
                 f.write(f"    HostName {server.host}\n")
                 f.write(f"    Port {server.port}\n")
