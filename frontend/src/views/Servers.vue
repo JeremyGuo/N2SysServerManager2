@@ -22,6 +22,12 @@
           {{ row.gateway ? 'Yes' : 'No' }}
         </template>
       </el-table-column>
+      <el-table-column label="Proxy">
+        <template #default="{ row }">
+          <span v-if="row.proxy">{{ row.proxy.host + ':' + row.proxy.port }}</span>
+          <span v-else>N/A</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="os" label="OS"></el-table-column>
       <el-table-column prop="kernel" label="Kernel"></el-table-column>
     </el-table>

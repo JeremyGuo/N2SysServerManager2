@@ -18,6 +18,7 @@ def add_server(
     srv = Server(
         host=server_in["host"],
         port=server_in["port"],
+        proxy_server_id=server_in.get("proxyServerId", None),
         is_gateway=server_in.get("isGateway", False)
     )
     db.add(srv); db.commit(); db.refresh(srv)
@@ -39,7 +40,8 @@ def list_servers(
             "gateway": s.is_gateway,
             "os": s.os_version,
             "kernel": s.kernel_version,
-            "tags": [t.tag for t in s.tags]
+            "tags": [t.tag for t in s.tags],
+            "proxy": {"id": s.proxy_server.id, "host": s.proxy_server.host, "port": s.proxy_server.port} if s.proxy_server else None
         }
         for s in servers
     ]
@@ -60,6 +62,8 @@ def get_server_detail(
         "host": srv.host,
         "port": srv.port,
         "is_gateway": srv.is_gateway,
+        "proxy_server_id": srv.proxy_server_id,
+        "proxy_server": {"id": srv.proxy_server.id, "host": srv.proxy_server.host, "port": srv.proxy_server.port} if srv.proxy_server else None,
         "server_status": srv.server_status.value,
         "is_separated_home": srv.is_mounted_home,
         "os_version": srv.os_version,

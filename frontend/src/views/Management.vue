@@ -14,6 +14,12 @@
           <el-form-item label="Is Gateway">
             <el-switch v-model="newServer.isGateway"/>
           </el-form-item>
+          <el-form-item label="Proxy Server">
+            <el-select v-model="newServer.proxyServerId" placeholder="Select proxy server">
+              <el-option label="None" :value="null"/>
+              <el-option v-for="s in servers" :key="s.id" :label="`${s.host}:${s.port}`" :value="s.id"/>
+            </el-select>
+          </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="addServer" :loading="loading">Add Server</el-button>
           </el-form-item>
@@ -102,9 +108,10 @@ import { useRouter } from 'vue-router'
 
 const router = useRouter()
 const loading = ref(false)
-const newServer = ref({ host:'', port:22, isGateway:false })
+const newServer = ref({ host:'', port:22, isGateway:false, proxyServerId:null })
 const newSwitch = ref({ name:'', numRow:1, numCol:1 })
 const switches = ref([])
+const servers = ref([])
 
 const pendingApps = ref([])
 const users = ref([])
@@ -130,7 +137,9 @@ async function addServer() {
       credentials:'include',
       body:JSON.stringify(newServer.value)
     })
-    newServer.value = { host:'', port:22, isGateway:false }
+    // refresh proxy server options
+    await fetchServers()
+    newServer.value = { host:'', port:22, isGateway:false, proxyServerId:null }
   } catch(e){ console.error(e) }
   loading.value = false
 }
@@ -218,10 +227,17 @@ async function fetchSwitches() {
   if (res.ok) switches.value = await res.json()
 }
 
+// Fetch list of existing servers for proxy selection
+async function fetchServers() {
+  const res = await fetch('/api/server/list', { credentials:'include' })
+  if (res.ok) servers.value = await res.json()
+}
+
 onMounted(async ()=>{
   await fetchCurrentUser()
   await fetchPending()
   await fetchUsers()
   await fetchSwitches()
+  await fetchServers()
 })
 </script>

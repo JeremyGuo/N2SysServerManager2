@@ -16,6 +16,14 @@
               <el-form-item label="Server Gateway">
                 <el-switch v-model="server.is_gateway" disabled />
               </el-form-item>
+              <el-form-item label="Proxy Server">
+                <template v-if="server.proxy_server">
+                  {{ server.proxy_server.host + ':' + server.proxy_server.port }}
+                </template>
+                <template v-else>
+                  N/A
+                </template>
+              </el-form-item>
               <el-form-item label="Server Status">
                 {{ server.server_status }}
               </el-form-item>

@@ -49,6 +49,11 @@ class Server(Base):
     kernel_version : Mapped[str] = mapped_column(default="")
     os_version : Mapped[str] = mapped_column(default="")
 
+    # Proxy Server
+    proxy_server_id : Mapped[Optional[int]] = mapped_column(ForeignKey("server.id"))
+    proxy_server : Mapped[Optional["Server"]] = relationship(back_populates="proxied_servers", remote_side=[id])
+    proxied_servers : Mapped[List["Server"]] = relationship(back_populates="proxy_server")
+
     # User-defined data
     ipmi : Mapped[str] = mapped_column(default="")
 
