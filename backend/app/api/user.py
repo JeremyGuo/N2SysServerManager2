@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Dict
 from pydantic import BaseModel, EmailStr
 
-from app.database import get_db, User as DBUser, Application, Account, UserStatus
+from app.database import get_db, User as DBUser, Application, Account, UserStatus, AccountStatus
 from validator import getUser, getUserAdmin
 from app.api.auth import verify_password, get_password_hash
 
@@ -175,9 +175,14 @@ def update_user(
     # Apply updates
     target.realname = data.realname.strip()
     target.mail = data.mail
+    needUpdateAccounts = target.public_key != data.public_key.strip()
     target.public_key = data.public_key.strip()
     # Update password if provided
     if data.new_password:
         target.password = get_password_hash(data.new_password)
+    if needUpdateAccounts:
+        # Update accounts if public key changed
+        for account in target.accounts:
+            account.status = AccountStatus.DIRTY
     db.commit()
     return {"msg": "User updated"}
