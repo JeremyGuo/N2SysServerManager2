@@ -1,11 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List, Dict
+from pydantic import BaseModel, EmailStr
 
 from app.database import get_db, User as DBUser, Application, Account, UserStatus
 from validator import getUser, getUserAdmin
+from app.api.auth import verify_password, get_password_hash
 
 router = APIRouter()
+
+class UserUpdate(BaseModel):
+    id: int
+    realname: str
+    mail: EmailStr
+    public_key: str
+    old_password: str = ''
+    new_password: str = ''
 
 @router.get("/me")
 def read_current_user(
@@ -142,3 +152,32 @@ def restore_user(
     user.status = UserStatus.ACTIVE
     db.commit()
     return {"msg": "User restored"}
+
+@router.post("/update", response_model=dict)
+def update_user(
+    data: UserUpdate,
+    current_user: DBUser = Depends(getUser),
+    db: Session = Depends(get_db)
+):
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    target = db.query(DBUser).filter(DBUser.id == data.id).first()
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="User not found")
+    # Permission check: self or admin
+    is_self = current_user.id == data.id
+    if not is_self and not current_user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
+    # If editing self, verify old password
+    if is_self:
+        if not data.old_password or not verify_password(data.old_password, target.password):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect password")
+    # Apply updates
+    target.realname = data.realname.strip()
+    target.mail = data.mail
+    target.public_key = data.public_key.strip()
+    # Update password if provided
+    if data.new_password:
+        target.password = get_password_hash(data.new_password)
+    db.commit()
+    return {"msg": "User updated"}
