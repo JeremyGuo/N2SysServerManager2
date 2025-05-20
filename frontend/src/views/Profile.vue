@@ -87,9 +87,6 @@
           <el-form-item label="Needs Admin">
             <el-switch v-model="newApplication.need_sudo" />
           </el-form-item>
-          <el-form-item label="Current Password">
-            <el-input type="password" v-model="newApplication.password" class="full-width-input" />
-          </el-form-item>
         </el-form>
         <template #footer>
           <el-button @click="applicationModalVisible = false">Cancel</el-button>
@@ -116,7 +113,7 @@ const confirmPassword = ref('')
 const applications = ref([])
 const accounts = ref([])
 const applicationModalVisible = ref(false)
-const newApplication = reactive({ host: '', server_id: null, need_sudo: false, password: '' })
+const newApplication = reactive({ host: '', server_id: null, need_sudo: false})
 const serverList = ref([])
 
 async function fetchProfile() {

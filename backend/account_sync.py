@@ -6,6 +6,10 @@ from account_helpers import *
 import asyncssh
 import copy
 from contextlib import asynccontextmanager
+# async semaphore to limit the number of concurrent tasks
+
+concurrent_tasks = 20
+semaphore = asyncio.Semaphore(concurrent_tasks)
 
 syncing_accounts = {}
 start_watcher = False
@@ -34,13 +38,17 @@ async def stopWatcher():
 
 @asynccontextmanager
 async def getConnection(srv: Server):
+    db = SessionLocal()
     try:
-        db = SessionLocal()
         server = db.query(Server).filter(Server.id == srv.id).first()
         if not server:
             raise Exception(f"Server {server.id} not found in database while getting connection.")
         if not server.proxy_server:
-            conn = await asyncio.wait_for(asyncssh.connect(host=server.host, port=server.port, known_hosts=None), timeout=3) # TODO: add known_hosts
+            host = server.host
+            port = server.port
+            db.close()
+            logger.info(f"Connecting to server {host}:{port} directly.")
+            conn = await asyncio.wait_for(asyncssh.connect(host=host, port=port, known_hosts=None), timeout=3) # TODO: add known_hosts
             yield conn
             conn.close()
         else:
@@ -62,10 +70,13 @@ async def getConnection(srv: Server):
                 f.write(f"    Port {server.port}\n")
                 f.write(f"    ProxyJump {server.proxy_server.host}:{server.proxy_server.port}\n")
             default_config_path = os.path.expanduser("~/.ssh/config")
+            host = server.host
+            port = server.port
+            db.close()
             conn = await asyncio.wait_for(
                 asyncssh.connect(
-                    host=server.host,
-                    port=server.port,
+                    host=host,
+                    port=port,
                     known_hosts=None,
                     config=[default_config_path, ssh_config_file]
                 ),
@@ -76,50 +87,51 @@ async def getConnection(srv: Server):
     except Exception as e:
         logger.error(f"Error connecting to server {srv.host}: {e}")
         raise e
-    
-
-
 
 async def doSyncAccount(user: User, server: Server, account: Account):
-    logger.info(f"Connecting to server {server.host}")
-    async with getConnection(server) as conn:
-        logger.info(f"Connected to server {server.host}")
-        # Step 1 - Check if the account exists if not create it
-        if not await sshAccountIsExists(conn, user.account_name):
-            logger.info(f"Account {user.account_name} does not exist. Creating it.")
-            result, err = await sshAccountCreate(conn, user.account_name)
-            if not result:
-                raise Exception(f"Error creating account {user.account_name} on {server.host}: {err}")
-        else:
-            logger.info(f"Account {user.account_name} already exists. Skipping creation.")
-        # Step 2 - Make the account the same loginable as the account
-        if account.is_login_able:
-            old_authorized_keys = await sshAccountGetAuthorizedKeys(conn, user.account_name)
-            new_authorized_keys = user.public_key.split("\n")
-            # Merge the keys
-            final_keys = old_authorized_keys.split("\n")
-            for key in new_authorized_keys:
-                if key not in final_keys:
-                    final_keys.append(key)
-            logger.info(f"Enabling account {user.account_name} on {server.host} with {len(final_keys)} keys.")
-            final_keys = "\n".join(final_keys)
-            result, err = await sshAccountEnable(conn, user.account_name, final_keys)
-            if not result:
-                raise Exception(f"Error enabling account {user.account_name} on {server.host}: {err}")
-        else:
-            result, err = await sshAccountDisable(conn, user.account_name)
-            if not result:
-                raise Exception(f"Error disabling account {user.account_name} on {server.host}: {err}")
-            return
-        # Step 3 - Make the account sudoable if needed
-        if account.is_sudo:
-            result, err = await sshAccountSudo(conn, user.account_name)
-            if not result:
-                raise Exception(f"Error making account {user.account_name} sudoable on {server.host}: {err}")
-        else:
-            result, err = await sshAccountUnsudo(conn, user.account_name)
-            if not result:
-                raise Exception(f"Error making account {user.account_name} no sudo on {server.host}: {err}")
+    async with semaphore:
+        logger.info(f"Connecting to server {server.host}")
+        async with getConnection(server) as conn:
+            logger.info(f"Connected to server {server.host}")
+            # Step 1 - Check if the account exists if not create it
+            if not await sshAccountIsExists(conn, user.account_name):
+                logger.info(f"Account {user.account_name} does not exist. Creating it.")
+                result, err = await sshAccountCreate(conn, user.account_name)
+                if not result:
+                    raise Exception(f"Error creating account {user.account_name} on {server.host}: {err}")
+            else:
+                logger.info(f"Account {user.account_name} already exists. Skipping creation.")
+            # Step 2 - Make the account the same loginable as the account
+            if account.is_login_able:
+                old_authorized_keys = await sshAccountGetAuthorizedKeys(conn, user.account_name)
+                new_authorized_keys = user.public_key.split("\n")
+                # Merge the keys
+                final_keys = old_authorized_keys.split("\n")
+                for key in new_authorized_keys:
+                    if key not in final_keys:
+                        final_keys.append(key)
+                final_keys = [key for key in final_keys if key.strip() != ""]
+                logger.info(f"Enabling account {user.account_name} on {server.host} with {len(final_keys)} keys.")
+                final_keys = "\n".join(final_keys)
+                result, err = await sshAccountEnable(conn, user.account_name, final_keys)
+                if not result:
+                    raise Exception(f"Error enabling account {user.account_name} on {server.host}: {err}")
+            else:
+                result, err = await sshAccountDisable(conn, user.account_name)
+                if not result:
+                    raise Exception(f"Error disabling account {user.account_name} on {server.host}: {err}")
+                return
+            # Step 3 - Make the account sudoable if needed
+            if account.is_sudo:
+                result, err = await sshAccountSudo(conn, user.account_name)
+                if not result:
+                    raise Exception(f"Error making account {user.account_name} sudoable on {server.host}: {err}")
+            elif await sshAccountIsSudo(conn, user.account_name):
+                result, err = await sshAccountUnsudo(conn, user.account_name)
+                if not result:
+                    raise Exception(f"Error making account {user.account_name} no sudo on {server.host}: {err}")
+            else:
+                logger.info(f"Account {user.account_name} is not sudoable on {server.host}. Skipping.")
 
 async def syncAccount(user : User, server : Server, account: Account):
     if not account.id:
@@ -145,6 +157,7 @@ async def syncAccount(user : User, server : Server, account: Account):
         else:
             account_db.status = AccountStatus.ACTIVE if success else AccountStatus.DIRTY
         db.commit()
+        db.close()
     except Exception as e:
         logger.error(f"Error processing clear transactions account {account.id}: {e}")
     syncing_accounts[account.id] = False
@@ -214,7 +227,8 @@ async def watchAccountSync():
             # Routine 4 - TODO - auto revoke account if the user is inactive for a long time
 
             # Routine 5 - TODO - collect usage data from the servers
-    
+
+            db.close()
             await asyncio.sleep(30)
     except Exception as e:
         logger.error(f"Error in watchAccountSync: {e}")

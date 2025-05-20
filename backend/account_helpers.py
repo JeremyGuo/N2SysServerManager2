@@ -40,6 +40,27 @@ async def sshAccountGetAuthorizedKeys(conn: asyncssh.SSHClientConnection, accoun
         return ""
     return result.stdout.strip()
 
+async def sshAccountIsEnabled(conn: asyncssh.SSHClientConnection, account: str) -> bool:
+    """
+    Check if the account is enabled on the server.
+    The account is enabled if /home/{account}/.ssh/authorized_keys exists and default shell is not /bin/false or /usr/sbin/nologin
+    """
+    result = await conn.run(f"sudo cat /home/{account}/.ssh/authorized_keys", timeout=3)
+    if result.exit_status != 0:
+        err_result = result.stderr.strip()
+        if "No such file or directory" in err_result:
+            return False
+        return False
+    # Check if the shell is /bin/false or /usr/sbin/nologin
+    result = await conn.run(f"sudo getent passwd {account}", timeout=3)
+    if result.exit_status != 0:
+        err_result = result.stderr.strip()
+        return False
+    ent = result.stdout.strip()
+    if "/bin/false" in ent or "/usr/sbin/nologin" in ent:
+        return False
+    return True
+
 async def sshAccountEnable(conn: asyncssh.SSHClientConnection, account: str, authorized_keys: str) -> tuple[bool, str]:
     """
     Enable the account on the server: write the authorized keys to /home/{account}/.ssh/authorized_keys
@@ -64,6 +85,19 @@ async def sshAccountEnable(conn: asyncssh.SSHClientConnection, account: str, aut
     if result.exit_status != 0:
         err_result = result.stderr.strip()
         return False, err_result
+    # If shell is /bin/false or /usr/sbin/nologin, change it to /bin/bash: 1. Get the current shell
+    result = await conn.run(f"sudo getent passwd {account}", timeout=3)
+    if result.exit_status != 0:
+        err_result = result.stderr.strip()
+        return False, err_result
+    # 2. Check if the shell is /bin/false or /usr/sbin/nologin
+    ent = result.stdout.strip()
+    if "/bin/false" in ent or "/usr/sbin/nologin" in ent:
+        # 3. Change the shell to /bin/bash
+        result = await conn.run(f"sudo usermod -s /bin/bash {account}", timeout=3)
+        if result.exit_status != 0:
+            err_result = result.stderr.strip()
+            return False, err_result
     return True, None
 
 async def sshAccountDisable(conn: asyncssh.SSHClientConnection, account: str) -> tuple[bool, str]:
@@ -93,6 +127,21 @@ async def sshAccountSudo(conn: asyncssh.SSHClientConnection, account: str) -> tu
         err_result = result.stderr.strip()
         return False, err_result
     return True, None
+
+async def sshAccountIsSudo(conn: asyncssh.SSHClientConnection, account: str) -> bool:
+    """
+    Check if the account is sudoable on the server.
+    The account is sudoable if it is in the sudo group
+    Note: avoid using grep because A and AA will match A
+    """
+    result = await conn.run(f"sudo getent group sudo | cut -d: -f4", timeout=3)
+    if result.exit_status != 0:
+        err_result = result.stderr.strip()
+        return False
+    ent = result.stdout.strip()
+    if account in ent.split(","):
+        return True
+    return False
 
 async def sshAccountUnsudo(conn: asyncssh.SSHClientConnection, account: str) -> tuple[bool, str]:
     """

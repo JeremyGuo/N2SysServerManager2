@@ -27,7 +27,7 @@ def get_summary(
             "users": [
                 {
                     "id": acct.id,
-                    "user": acct.user.username,
+                    "user": acct.user.realname,
                     "sudo": acct.is_sudo,
                     "lastLogin": acct.last_login_date.strftime("%Y-%m-%d %H:%M:%S")
                 }

@@ -6,3 +6,4 @@ node_modules
 logs/
 .nfs*
 ssh
+old_*

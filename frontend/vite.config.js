@@ -8,7 +8,7 @@ export default defineConfig({
     proxy: {
       // 将 /api 开头的请求转发到 http://localhost:8000，去掉 /api 前缀
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:3876',
         changeOrigin: true,
         rewrite: path => path.replace(/^\/api/, '')
       }

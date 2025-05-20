@@ -15,7 +15,6 @@ router = APIRouter()
 class ApplicationCreate(BaseModel):
     server_id: int
     need_sudo: bool
-    password: str
     uid: int
 
 @router.post("/submit", response_model=dict)
