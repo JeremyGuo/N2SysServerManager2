@@ -5,3 +5,4 @@ node_modules
 *.db
 logs/
 .nfs*
+ssh
