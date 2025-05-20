@@ -1,14 +1,5 @@
 <template>
   <el-container>
-    <el-header style="display: flex; justify-content: space-between; align-items: center; padding: 0 20px; height: 60px;">
-      <el-button type="link" @click="gotoHome" style="font-size: 35px; font-weight: bold; margin-left: 10px;">N2Sys</el-button>
-      <h2>Server Information</h2>
-      <div style="display: flex; align-items: center;">
-        <el-button class="el-header-button" type="link" @click="gotoProfile(currentUser.id)" style="margin-left: 10px;">Profile</el-button>
-        <el-button class="el-header-button" type="link" @click="logout" style="margin-left: 10px;">Logout</el-button>
-      </div>
-    </el-header>
-
     <el-main>
       <el-card class="card-spacing">
         <el-row>
@@ -157,44 +148,54 @@ import { ElMessage } from 'element-plus'
 const router = useRouter()
 const route = useRoute()
 const currentUser = ref({ id: null, is_admin: false })
-const server = reactive({ host: '', port: '', is_gateway: false, server_status: '', is_separated_home: false, os_version: '', kernel_version: '', tags: [], ipmi: '', interfaces: [] })
-const switches = ref([])
-const server_inters = ref([])
-const current_interface_id = ref(null)
-const connectionType = ref('断开')
-const showModal = ref(false)
-const switchConnection = reactive({ switchName: '', switchPort: 0 })
-const directConnection = reactive({ host: '', interfaceName: '' })
-const new_tag_value = ref('')
-const new_server_tag_value = ref('')
-const old_tag_row_obj = ref(null)
+const server = reactive({
+  id: null,
+  host: '',
+  port: '',
+  is_gateway: false,
+  server_status: '',
+  is_separated_home: false,
+  os_version: '',
+  kernel_version: '',
+  tags: [],
+  ipmi: '',
+  interfaces: []
+})
+
 const show_new_server_tag = ref(false)
+const new_server_tag_value = ref('')
 
 onMounted(async () => {
-  currentUser.value.id = /* TODO: fetch current user id */ null
-  currentUser.value.is_admin = true
+  // 1. 拉取当前用户，判断是否 admin
+  const usrRes = await fetch('/api/user/me', { credentials: 'include' })
+  if (usrRes.ok) {
+    const u = await usrRes.json()
+    currentUser.value.id = u.id
+    currentUser.value.is_admin = u.is_admin
+  }
+  // 2. 拉取 Server 详情
   const id = route.params.id
-  try {
-    const res = await fetch(`/server/${id}`, { credentials: 'include' })
-    if (res.ok) server = await res.json()
-    // fetch interfaces and switches
-    const interRes = await fetch(`/server/${id}/interfaces`, { credentials: 'include' })
-    if (interRes.ok) server.interfaces = await interRes.json()
-    const swRes = await fetch('/switches/list', { credentials: 'include' })
-    if (swRes.ok) switches.value = await swRes.json()
-    server_inters.value = server.interfaces
-  } catch (e) {
-    console.error(e)
+  const res = await fetch(`/api/server/${id}`, { credentials: 'include' })
+  if (res.ok) {
+    const data = await res.json()
+    Object.assign(server, data)
+  } else {
+    ElMessage.error('Failed to load server info')
+    router.push({ name: 'Servers' })
   }
 })
 
 function removeServerTag(tag_id) {
-  fetch('/server/tag/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_id }) })
-    .then(r => r.ok && fetch(`/server/${route.params.id}`, { credentials: 'include' }).then(res => res.ok && (server.tags = server.tags.filter(t => t.id !== tag_id))))
+  fetch('/api/server/tag/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_id }) })
+    .then(r => {
+      if (!r.ok) throw new Error()
+      server.tags = server.tags.filter(t => t.id !== tag_id)
+    })
+    .catch(() => ElMessage.error('Failed to remove tag'))
 }
 
 function removeTag(tag_id) {
-  fetch('/interface/tag/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_id }) })
+  fetch('/api/interface/tag/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_id }) })
     .then(r => r.ok && onMounted())
 }
 
@@ -202,8 +203,15 @@ function confirmServerTagInput() {
   const v = new_server_tag_value.value.trim()
   show_new_server_tag.value = false
   if (v) {
-    fetch('/server/tag/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: route.params.id, tag: v }) })
-      .then(r => r.ok && fetch(`/server/${route.params.id}`, { credentials: 'include' }).then(res => res.ok && (server.tags = [...server.tags, { id: Date.now(), tag: v }])))
+    fetch('/api/server/tag/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: route.params.id, tag: v }) })
+      .then(r => {
+        if (!r.ok) throw new Error()
+        return r.json()
+      })
+      .then(data => {
+        server.tags.push(data)
+      })
+      .catch(() => ElMessage.error('Failed to add tag'))
   }
 }
 
@@ -216,17 +224,17 @@ function confirmTagInput(row) {
   const v = new_tag_value.value.trim()
   old_tag_row_obj.value = null
   if (v) {
-    fetch('/interface/tag/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interface_id: row.id, tag: v }) })
+    fetch('/api/interface/tag/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interface_id: row.id, tag: v }) })
       .then(r => r.ok && row.tags.push({ id: Date.now(), tag: v }))
   }
 }
 
-function refreshServer() { fetch('/server/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: route.params.id }) }).then(() => location.reload()) }
+function refreshServer() { fetch('/api/server/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: route.params.id }) }).then(() => location.reload()) }
 
-function hostQuerySearch(query, cb) { cb(server_inters.value.filter(s => s.host.toLowerCase().includes(query.toLowerCase())).map(s => ({ value: s.host }))) }
+function hostQuerySearch(query, cb) { cb(server.interfaces.filter(s => s.host.toLowerCase().includes(query.toLowerCase())).map(s => ({ value: s.host }))) }
 
 function hostInterQuerySearch(query, cb) {
-  const srv = server_inters.value.find(s => s.host === directConnection.host)
+  const srv = server.interfaces.find(s => s.host === directConnection.host)
   const vals = srv ? srv.interfaces.filter(i => i.name.toLowerCase().includes(query.toLowerCase())).map(i => ({ value: i.name })) : []
   cb(vals)
 }
@@ -240,7 +248,7 @@ function saveChanges() {
   // implement connection logic
 }
 
-function saveIPMI() { fetch('/server/ipmi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: route.params.id, ipmi: server.ipmi }) }).then(() => ElMessage.success('IPMI info saved')) }
+function saveIPMI() { fetch('/api/server/ipmi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: route.params.id, ipmi: server.ipmi }) }).then(() => ElMessage.success('IPMI info saved')) }
 
 function submitApplication() {}
 

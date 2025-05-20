@@ -6,6 +6,7 @@ import Management from '../views/Management.vue'
 import Login from '../views/Login.vue'
 import Register from '../views/Register.vue'
 import Profile from '../views/Profile.vue'
+import ServerInfo from '../views/ServerInfo.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -44,6 +45,12 @@ const router = createRouter({
       path: '/profile/:id',
       name: 'Profile',
       component: Profile,
+      props: true
+    },
+    {
+      path: '/server/:id',
+      name: 'ServerInfo',
+      component: ServerInfo,
       props: true
     }
   ]

@@ -4,7 +4,10 @@
     <el-table :data="servers" style="width: 90%; margin: auto;">
       <el-table-column prop="host" label="Host">
         <template #default="{ row }">
-          <el-link>{{ row.host }}</el-link>
+          <!-- 跳转到 ServerInfo -->
+          <router-link :to="{ name: 'ServerInfo', params: { id: row.id } }">
+            {{ row.host }}
+          </router-link>
         </template>
       </el-table-column>
       <el-table-column label="Tags">

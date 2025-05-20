@@ -41,7 +41,7 @@
       <el-card v-if="currentUser.is_admin" class="card-spacing" style="margin-bottom: 20px;">
         <h3>Pending Applications</h3>
         <el-table :data="pendingApps" style="width:100%">
-          <el-table-column prop="username" label="User"/>
+          <el-table-column prop="realname" label="User"/>
           <el-table-column prop="host" label="Host"/>
           <el-table-column prop="need_sudo" label="Needs Admin">
             <template #default="{ row }"><el-switch v-model="row.need_sudo" disabled/></template>
@@ -56,7 +56,7 @@
         </el-table>
       </el-card>
 
-      <el-card class="card-spacing">
+      <el-card class="card-spacing" style="margin-bottom: 20px;">
         <h3>All Users</h3>
         <el-select v-model="userFilter" placeholder="Filter by status" @change="fetchUsers" style="width:200px;margin-bottom:10px;">
           <el-option label="All" value="all"/>
