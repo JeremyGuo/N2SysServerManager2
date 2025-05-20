@@ -101,7 +101,7 @@ function spanMethod({ row, column, rowIndex }) {
 async function handleSudoChange(row) {
   loading.value = true;
   try {
-    const url = `/account/${row.user}/sudo`;
+    const url = `/api/account/${row.account_id}/sudo`;
     const res = await fetch(url, { method: 'PUT', credentials: 'include' });
     if (!res.ok) {
         console.error('Failed to update sudo');
@@ -120,7 +120,7 @@ async function handleSudoChange(row) {
 async function revokePermission(row) {
   loading.value = true;
   try {
-    const url = `/account/${row.account_id}/revoke`;
+    const url = `/api/account/${row.account_id}/revoke`;
     const res = await fetch(url, { method: 'PUT', credentials: 'include' });
     if (res.ok) {
       // delete this user from servers data

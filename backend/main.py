@@ -7,6 +7,7 @@ from app.api.server import router as server_router
 from app.api.user import router as user_router
 from app.api.application import router as app_router
 from app.api.switch import router as switch_router
+from app.api.account import router as account_router
 from logger import logger
 
 # Create database tables
@@ -21,6 +22,7 @@ app.include_router(user_router, prefix="/user", tags=["user"])
 app.include_router(app_router, prefix="/app", tags=["application"])
 app.include_router(server_router, prefix="/server", tags=["server"])
 app.include_router(switch_router, prefix="/switch", tags=["switch"])
+app.include_router(account_router, prefix="/account", tags=["account"])
 
 # if there is no users in db, add a ADMIN db with username admin and password admin
 from app.database import SessionLocal, User, UserStatus
