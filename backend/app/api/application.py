@@ -88,6 +88,7 @@ def list_pending(
         {
           "id": app.id,
           "user_id": app.user_id,
+          "realname": app.user.realname,
           "username": app.user.username,
           "server_id": app.server_id,
           "host": app.server.host,

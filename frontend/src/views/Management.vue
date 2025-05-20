@@ -145,20 +145,20 @@ async function addServer() {
 }
 
 async function fetchPending() {
-  const res = await fetch('/api/application/pendings',{ credentials:'include' })
+  const res = await fetch('/api/app/pendings',{ credentials:'include' })
   if(res.ok) pendingApps.value = await res.json()
 }
 
 async function approveApp(id){
   loading.value = true
-  await fetch(`/api/application/${id}/approve`,{ method:'POST', credentials:'include' })
+  await fetch(`/api/app/${id}/approve`,{ method:'POST', credentials:'include' })
   await fetchPending()
   loading.value = false
 }
 
 async function rejectApp(id){
   loading.value = true
-  await fetch(`/api/application/${id}/reject`,{ method:'POST', credentials:'include' })
+  await fetch(`/api/app/${id}/reject`,{ method:'POST', credentials:'include' })
   await fetchPending()
   loading.value = false
 }
