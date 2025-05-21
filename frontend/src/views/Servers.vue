@@ -40,7 +40,7 @@ import { ref, onMounted } from 'vue'
 const servers = ref([])
 
 async function fetchServers() {
-  const res = await fetch('/api/server/list')
+  const res = await fetch('/api/server/list', { credentials: 'include' })
   if (res.ok) {
     servers.value = await res.json()
   } else {

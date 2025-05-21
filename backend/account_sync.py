@@ -1,17 +1,21 @@
 import asyncio
-from app.database import Account, SessionLocal, AccountStatus, Server, User, UserStatus
+from app.database import Account, SessionLocal, AccountStatus, Server, User, UserStatus, ServerStatus, ServerInterface
 from logger import logger
 from sqlalchemy.orm import make_transient
 from account_helpers import *
+from server_helpers import *
 import asyncssh
 import copy
 from contextlib import asynccontextmanager
+import datetime
 # async semaphore to limit the number of concurrent tasks
 
 concurrent_tasks = 20
 semaphore = asyncio.Semaphore(concurrent_tasks)
 
 syncing_accounts = {}
+last_server_collect_date = {}
+last_server_collecting = {}
 start_watcher = False
 
 def startWatcher():
@@ -30,6 +34,9 @@ async def stopWatcher():
         finished = True
         for account_id in syncing_accounts:
             if syncing_accounts[account_id]:
+                finished = False
+        for server_id in last_server_collecting:
+            if last_server_collecting[server_id]:
                 finished = False
         if finished:
             break
@@ -162,6 +169,102 @@ async def syncAccount(user : User, server : Server, account: Account):
         logger.error(f"Error processing clear transactions account {account.id}: {e}")
     syncing_accounts[account.id] = False
 
+async def syncServer(server: Server):
+    try:
+        if not server.id:
+            logger.fatal(f"Server {server.id} not found in database, this will cause a crash.")
+            import os
+            os._exit(1)
+        async with semaphore:
+            async with getConnection(server) as conn:
+                try:
+                    db = SessionLocal()
+                    server_db = db.query(Server).filter(Server.id == server.id).first()
+                    if not server_db:
+                        logger.error(f"Server {server.id} not found in database.")
+                        return
+                    server_db.server_status = ServerStatus.ACTIVE
+                    last_server_collect_date[server.id] = datetime.datetime.now()
+                    db.commit()
+                    db.close()
+
+                    # Step 1 - Get the kernel version
+                    kernel_version = await sshServerGetKernel(conn)
+                    logger.info(f"Collecting kernel version from server {server.host} {kernel_version}")
+                    db = SessionLocal()
+                    server_db = db.query(Server).filter(Server.id == server.id).first()
+                    if not server_db:
+                        logger.error(f"Server {server.id} not found in database.")
+                        return
+                    server_db.kernel_version = kernel_version
+                    db.commit()
+                    db.close()
+
+                    # Step 2 - Get the release version
+                    os_version = await sshServerGetRelease(conn)
+                    logger.info(f"Collecting release version from server {server.host} {os_version}")   
+                    db = SessionLocal() 
+                    server_db = db.query(Server).filter(Server.id == server.id).first()
+                    if not server_db:
+                        logger.error(f"Server {server.id} not found in database.")
+                        return
+                    server_db.os_version = os_version
+                    db.commit()
+                    db.close()
+
+                    # Step 3 - Get the NICs
+                    nics = await sshServerGetNICs(conn)
+                    ib_nics = await sshServerGetIBNICs(conn)
+                    logger.info(f"Collecting NICs from server {server.host} {nics}")
+                    logger.info(f"Collecting IB NICs from server {server.host} {ib_nics}")
+                    db = SessionLocal()
+                    server_db = db.query(Server).filter(Server.id == server.id).first()
+                    for nic in nics:
+                        old_interface = db.query(ServerInterface).filter(
+                            ServerInterface.server_id == server.id,
+                            ServerInterface.pci_address == nic["pci_address"]
+                        ).first()
+                        if old_interface:
+                            old_interface.interface = nic["interface_name"] if nic["interface_name"] else "No Name Eth"
+                            old_interface.manufacturer = nic["nic_name"]
+                        else:
+                            new_interface = ServerInterface(
+                                pci_address=nic["pci_address"],
+                                interface=nic["interface_name"],
+                                manufacturer=nic["nic_name"],
+                                server_id=server.id
+                            )
+                            db.add(new_interface)
+                        db.commit()
+                    for ib_nic in ib_nics:
+                        old_interface = db.query(ServerInterface).filter(
+                            ServerInterface.server_id == server.id,
+                            ServerInterface.pci_address == ib_nic["pci_address"]
+                        ).first()
+                        if old_interface:
+                            old_interface.interface = ib_nic["interface_name"]
+                            old_interface.manufacturer = ib_nic["nic_name"]
+                        else:
+                            new_interface = ServerInterface(
+                                pci_address=ib_nic["pci_address"],
+                                interface=ib_nic["interface_name"] if ib_nic["interface_name"] else "No Name IB",
+                                manufacturer=ib_nic["nic_name"],
+                                server_id=server.id
+                            )
+                            db.add(new_interface)
+                        db.commit()
+                    db.close()
+
+                    # Step 4 - Get the account login history
+                except Exception as e:
+                    logger.error(f"Error collecting data from server {server.host}: {e}")
+                    server.server_status = ServerStatus.NO_PERMISSION
+    except Exception as e:
+        logger.error(f"Error collecting data from server {server.host}: {e}")
+        server.server_status = ServerStatus.UNABLE_TO_REACH
+    finally:
+        last_server_collecting[server.id] = False
+
 async def watchAccountSync():
     try:
         while start_watcher:
@@ -227,6 +330,13 @@ async def watchAccountSync():
             # Routine 4 - TODO - auto revoke account if the user is inactive for a long time
 
             # Routine 5 - TODO - collect usage data from the servers
+            servers = db.query(Server).all()
+            for server in servers:
+                if server.id not in last_server_collect_date or last_server_collect_date[server.id] < datetime.datetime.now() - datetime.timedelta(hours=1):
+                    if server.id not in last_server_collecting or not last_server_collecting[server.id]:
+                        last_server_collecting[server.id] = True
+                        db.refresh(server); db.expunge(server); make_transient(server)
+                        asyncio.create_task(syncServer(server))
 
             db.close()
             await asyncio.sleep(30)

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Dict
 from fastapi.responses import JSONResponse
 
-from app.database import get_db, Server, ServerTag, User
+from app.database import get_db, Server, ServerTag, User, ServerInterface, InterfaceTag, Connection, SwitchPort
 from validator import getUserAdmin, getUser
 from pydantic import BaseModel
 
@@ -57,7 +57,7 @@ def get_server_detail(
     srv = db.query(Server).filter(Server.id == server_id).first()
     if not srv:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Server not found")
-    return {
+    result = {
         "id": srv.id,
         "host": srv.host,
         "port": srv.port,
@@ -70,16 +70,46 @@ def get_server_detail(
         "kernel_version": srv.kernel_version,
         "ipmi": srv.ipmi,
         "tags": [{"id": t.id, "tag": t.tag} for t in srv.tags],
-        "interfaces": [
-            {
-                "id": i.id,
-                "interface": i.interface,
-                "pci_address": i.pci_address,
-                "tags": [{"id": tg.id, "tag": tg.tag} for tg in i.tags]
-            }
-            for i in srv.interfaces
-        ]
+        "interfaces": []
     }
+    for i in srv.interfaces:
+        peer_interface = None
+        peer_switch = None
+        if i.conn_id:
+            conn = db.query(Connection).get(i.conn_id)
+            if conn:
+                # try find other interface
+                for pi in conn.interfaces:
+                    if pi.id != i.id:
+                        peer_interface = {
+                            "id": pi.id,
+                            "server_id": pi.server_id,
+                            "server_host": pi.server.host,
+                            "interface": pi.interface,
+                            "manufacturer": pi.manufacturer,
+                            "pci_address": pi.pci_address
+                        }
+                        break
+                # else check switch ports
+                if not peer_interface and conn.switch_ports:
+                    sp = conn.switch_ports[0]
+                    peer_switch = {
+                        "switch_id": sp.switch_id,
+                        "switch_name": sp.switch.name,
+                        "phy_row": sp.phy_row,
+                        "phy_col": sp.phy_col,
+                        "port_num": sp.phy_col * sp.switch.num_row + sp.phy_row + 1
+                    }
+        result["interfaces"].append({
+            "id": i.id,
+            "interface": i.interface,
+            "pci_address": i.pci_address,
+            "manufacturer": i.manufacturer,
+            "tags": [{"id": tg.id, "tag": tg.tag} for tg in i.tags],
+            "peer_interface": peer_interface,
+            "peer_switch": peer_switch
+        })
+    return result
 
 class ServerTagAddIn(BaseModel):
     server_id: int
@@ -110,6 +140,41 @@ def remove_server_tag(
     db: Session = Depends(get_db)
 ):
     tag = db.query(ServerTag).filter(ServerTag.id == data.tag_id).first()
+    if not tag:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
+    db.delete(tag)
+    db.commit()
+    return {}
+
+class InterfaceTagAddIn(BaseModel):
+    interface_id: int
+    tag: str
+
+@router.post("/interface/tag/add", response_model=dict)
+def add_interface_tag(
+    data: InterfaceTagAddIn,
+    admin: User = Depends(getUserAdmin),
+    db: Session = Depends(get_db)
+):
+    iface = db.query(ServerInterface).filter(ServerInterface.id == data.interface_id).first()
+    if not iface:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interface not found")
+    tag = InterfaceTag(interface_id=iface.id, tag=data.tag.strip())
+    db.add(tag)
+    db.commit()
+    db.refresh(tag)
+    return {"id": tag.id, "tag": tag.tag}
+
+class InterfaceTagRemoveIn(BaseModel):
+    tag_id: int
+
+@router.post("/interface/tag/remove", status_code=status.HTTP_204_NO_CONTENT)
+def remove_interface_tag(
+    data: InterfaceTagRemoveIn,
+    admin: User = Depends(getUserAdmin),
+    db: Session = Depends(get_db)
+):
+    tag = db.query(InterfaceTag).filter(InterfaceTag.id == data.tag_id).first()
     if not tag:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tag not found")
     db.delete(tag)

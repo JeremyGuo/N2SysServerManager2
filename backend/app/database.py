@@ -1,5 +1,5 @@
 import os
-from sqlalchemy import create_engine, ForeignKey
+from sqlalchemy import create_engine, ForeignKey, event, DDL
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Mapped, mapped_column, relationship
 from dotenv import load_dotenv
@@ -154,8 +154,11 @@ class ServerInterface(Base):
     server_id : Mapped[int] = mapped_column(ForeignKey("server.id"))
     server : Mapped["Server"] = relationship("Server", back_populates="interfaces")
 
-    conn : Mapped[Optional["Connection"]] = relationship(back_populates="interfaces", cascade="all, delete")
-    conn_id : Mapped[Optional[int]] = mapped_column(ForeignKey("connection.id"))
+    conn : Mapped[Optional["Connection"]] = relationship(back_populates="interfaces")
+    conn_id : Mapped[Optional[int]] = mapped_column(
+        ForeignKey("connection.id", ondelete="SET NULL"),
+        nullable=True
+    )
 
     tags : Mapped[List["InterfaceTag"]] = relationship(back_populates="interface", cascade="all, delete-orphan")
 
@@ -178,5 +181,42 @@ class SwitchPort(Base):
     switch_id: Mapped[int] = mapped_column(ForeignKey("switch.id"))
     switch : Mapped["Switch"] = relationship(back_populates="ports")
 
-    conn_id : Mapped[Optional[int]] = mapped_column(ForeignKey("connection.id"))
-    conn : Mapped[Optional["Connection"]] = relationship(back_populates="switch_ports", cascade="all, delete")
+    conn_id : Mapped[Optional[int]] = mapped_column(
+        ForeignKey("connection.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    conn : Mapped[Optional["Connection"]] = relationship(back_populates="switch_ports")
+
+# Trigger: when a ServerInterface is deleted, delete its Connection
+event.listen(
+    ServerInterface.__table__,
+    "after_create",
+    DDL(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_delete_conn_after_if_delete
+        AFTER DELETE ON server_interface
+        FOR EACH ROW
+        WHEN OLD.conn_id IS NOT NULL
+        BEGIN
+          DELETE FROM connection WHERE id = OLD.conn_id;
+        END;
+        """
+    ),
+)
+
+# Trigger: when a SwitchPort is deleted, delete its Connection
+event.listen(
+    SwitchPort.__table__,
+    "after_create",
+    DDL(
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_delete_conn_after_sp_delete
+        AFTER DELETE ON switch_port
+        FOR EACH ROW
+        WHEN OLD.conn_id IS NOT NULL
+        BEGIN
+          DELETE FROM connection WHERE id = OLD.conn_id;
+        END;
+        """
+    ),
+)
