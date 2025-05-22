@@ -1,11 +1,22 @@
 <template>
   <div>
-    <el-table :data="tableData" :span-method="spanMethod" :fit="true" style="width: 90%; margin: auto;">
+    <el-table :data="tableData" :span-method="spanMethod" :fit="true" style="width: 90%; margin: auto;" :default-sort="{ prop: 'host', order: 'ascending' }">
       <!-- Grouped Host columns -->
       <el-table-column label="Host">
-        <el-table-column prop="host" label="Host Name" />
+        <el-table-column prop="host" label="Host Name" sortable />
         <el-table-column prop="status" label="Server Status" :width="120"/>
-        <el-table-column prop="isGateway" label="Is Gateway" :width="120"/>
+        <el-table-column 
+          prop="isGateway" 
+          label="Is Gateway" 
+          :width="120"
+          :filters="gatewayFilters"
+          :filter-method="filterGateway"
+          :filtered-value="[false]"
+        >
+          <template #default="{ row }">
+            {{ row.isGateway ? 'Yes' : 'No' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="isMounted" label="Is Mounted" :width="120"/>
       </el-table-column>
       <!-- Other columns -->
@@ -71,6 +82,17 @@ const tableData = computed(() =>
     }))
   )
 );
+
+// filters for gateway column
+const gatewayFilters = [
+  { text: 'Gateway', value: true },
+  { text: 'Not Gateway', value: false }
+];
+
+// filter method for gateway
+function filterGateway(value, row) {
+  return row.isGateway === value;
+}
 
 // merge rows when host-level fields are the same
 function spanMethod({ row, column, rowIndex }) {
