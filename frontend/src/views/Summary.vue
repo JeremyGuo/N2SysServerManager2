@@ -7,6 +7,7 @@
       :fit="true" 
       style="width: 90%; margin: auto;" 
       :default-sort="{ prop: 'host', order: 'ascending' }"
+      :cell-class-name="loginCellClass"
     >
       <!-- Grouped Host columns -->
       <el-table-column label="Host">
@@ -37,7 +38,14 @@
           />
         </template>
       </el-table-column>
-      <el-table-column prop="lastLogin" label="Last Login" />
+      <el-table-column 
+        prop="lastLogin" 
+        label="Last Login"
+      >
+        <template #default="{ row }">
+          <span :style="getLoginStyle(row.lastLogin)">{{ row.lastLogin }}</span>
+        </template>
+      </el-table-column>
       <el-table-column v-if="currentUser.isRoot" label="Actions">
         <template #default="{ row }">
           <el-button
@@ -130,6 +138,23 @@ function spanMethod({ row, column, rowIndex }) {
   return { rowspan: rowSpan, colspan: 1 };
 }
 
+// 根据 lastLogin 与当前日期差异返回样式
+function getLoginStyle(dateStr) {
+  const diffDays = (Date.now() - new Date(dateStr).getTime()) / 86400000;
+  if (diffDays > 25) return { color: 'red' };
+  if (diffDays > 7)  return { color: 'orange' };
+  return { color: 'green' };
+}
+
+// 给 lastLogin 单元格分配背景色 class
+function loginCellClass({ row, column, rowIndex, columnIndex }) {
+  if (column.property !== 'lastLogin') return '';
+  const diffDays = (Date.now() - new Date(row.lastLogin).getTime()) / 86400000;
+  if (diffDays > 25) return 'login-cell-red';
+  if (diffDays > 7)  return 'login-cell-yellow';
+  return 'login-cell-green';
+}
+
 // toggle sudo permission
 async function handleSudoChange(row) {
   loading.value = true;
@@ -185,3 +210,9 @@ async function fetchSummary() {
 }
 onMounted(fetchSummary);
 </script>
+
+<style>
+.login-cell-red    { background-color: #ffd6d6; }
+.login-cell-yellow { background-color: #fff5cc; }
+.login-cell-green  { background-color: #e6ffed; }
+</style>
