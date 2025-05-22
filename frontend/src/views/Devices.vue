@@ -14,7 +14,7 @@
               <div class="grid-cell">
                 <template v-if="getPort(sw, r-1, c-1)">
                   <el-button
-                    type="primary"
+                    :type="portButtonType(sw, r-1, c-1)"
                     size="mini"
                     @click="openPortDialog(sw, getPort(sw, r-1, c-1))"
                   >
@@ -213,6 +213,12 @@ function portLabel(sw, r, c) {
     return `${peer.server_host}:${peer.name}`
   }
   return peer.name
+}
+// Determine button type: default grey, primary blue for switch, success green for server
+function portButtonType(sw, r, c) {
+  const port = getPort(sw, r, c)
+  if (!port || !port.connected_to) return 'default'
+  return port.connected_to.type === 'switch_port' ? 'primary' : 'success'
 }
 </script>
 
