@@ -24,6 +24,30 @@ def add_server(
     db.add(srv); db.commit(); db.refresh(srv)
     return {"id": srv.id, "host": srv.host, "port": srv.port, "isGateway": srv.is_gateway}
 
+@router.get("/search", response_model=List[Dict])
+def search_servers_by_interface_manufacturer(
+    manufacturer: str,
+    user: User = Depends(getUser),
+    db: Session = Depends(get_db)
+):
+    if not user:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
+    interfaces = (
+        db.query(ServerInterface)
+          .join(Server)
+          .filter(ServerInterface.manufacturer.ilike(f"%{manufacturer}%"))
+          .all()
+    )
+    return [
+        {
+            "server_id": iface.server.id,
+            "host": iface.server.host,
+            "interface_id": iface.id,
+            "manufacturer": iface.manufacturer
+        }
+        for iface in interfaces
+    ]
+
 @router.get("/list", response_model=List[Dict])
 def list_servers(
     user: User = Depends(getUser),
