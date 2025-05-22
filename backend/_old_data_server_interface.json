@@ -1,0 +1,1982 @@
+[
+    {
+        "id": 2,
+        "interface": "enp2s0f2",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.2",
+        "server_id": 1,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 3,
+        "interface": "enp129s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.0",
+        "server_id": 1,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 4,
+        "interface": "enp2s0f3",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.3",
+        "server_id": 1,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 5,
+        "interface": "enp2s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.0",
+        "server_id": 1,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 8,
+        "interface": "enp129s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.1",
+        "server_id": 1,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 9,
+        "interface": "enp2s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.1",
+        "server_id": 1,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 12,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:4b:00.1",
+        "server_id": 2,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 13,
+        "interface": "ens85f0",
+        "manufacturer": "",
+        "pci_address": "0000:31:00.0",
+        "server_id": 2,
+        "direct_conn_id": null,
+        "switch_port_id": 25
+    },
+    {
+        "id": 16,
+        "interface": "ens85f1",
+        "manufacturer": "",
+        "pci_address": "0000:31:00.1",
+        "server_id": 2,
+        "direct_conn_id": null,
+        "switch_port_id": 234
+    },
+    {
+        "id": 17,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:4b:00.0",
+        "server_id": 2,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 18,
+        "interface": "enxb03af2b6059f",
+        "manufacturer": "",
+        "pci_address": "0000:00:14.0",
+        "server_id": 2,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 19,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 3,
+        "direct_conn_id": null,
+        "switch_port_id": 188
+    },
+    {
+        "id": 20,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 3,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 21,
+        "interface": "ens3f0np0",
+        "manufacturer": "",
+        "pci_address": "0000:5e:00.0",
+        "server_id": 3,
+        "direct_conn_id": null,
+        "switch_port_id": 179
+    },
+    {
+        "id": 22,
+        "interface": "ens3f1np1",
+        "manufacturer": "",
+        "pci_address": "0000:5e:00.1",
+        "server_id": 3,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 23,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 3,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 24,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 3,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 25,
+        "interface": "ens6f0",
+        "manufacturer": "",
+        "pci_address": "0000:af:00.0",
+        "server_id": 3,
+        "direct_conn_id": 2,
+        "switch_port_id": null
+    },
+    {
+        "id": 26,
+        "interface": "ens1f0np0",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.0",
+        "server_id": 3,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 27,
+        "interface": "ens6f1",
+        "manufacturer": "",
+        "pci_address": "0000:af:00.1",
+        "server_id": 3,
+        "direct_conn_id": null,
+        "switch_port_id": 113
+    },
+    {
+        "id": 28,
+        "interface": "ens1f1np1",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.1",
+        "server_id": 3,
+        "direct_conn_id": null,
+        "switch_port_id": 151
+    },
+    {
+        "id": 29,
+        "interface": "ens4f0np0",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.0",
+        "server_id": 3,
+        "direct_conn_id": null,
+        "switch_port_id": 241
+    },
+    {
+        "id": 30,
+        "interface": "ens4f1np1",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.1",
+        "server_id": 3,
+        "direct_conn_id": 1,
+        "switch_port_id": null
+    },
+    {
+        "id": 33,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:3d:00.0",
+        "server_id": 4,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 34,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:3d:00.1",
+        "server_id": 4,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 40,
+        "interface": "ens801f0",
+        "manufacturer": "",
+        "pci_address": "0000:b1:00.0",
+        "server_id": 4,
+        "direct_conn_id": null,
+        "switch_port_id": 240
+    },
+    {
+        "id": 41,
+        "interface": "ens801f1",
+        "manufacturer": "",
+        "pci_address": "0000:b1:00.1",
+        "server_id": 4,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 42,
+        "interface": "ens785f0np0",
+        "manufacturer": "",
+        "pci_address": "0000:18:00.0",
+        "server_id": 4,
+        "direct_conn_id": null,
+        "switch_port_id": 76
+    },
+    {
+        "id": 43,
+        "interface": "ens785f1np1",
+        "manufacturer": "",
+        "pci_address": "0000:18:00.1",
+        "server_id": 4,
+        "direct_conn_id": null,
+        "switch_port_id": 7
+    },
+    {
+        "id": 46,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 5,
+        "direct_conn_id": null,
+        "switch_port_id": 180
+    },
+    {
+        "id": 47,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 5,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 48,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 5,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 49,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 5,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 50,
+        "interface": "ens3f0",
+        "manufacturer": "",
+        "pci_address": "0000:5e:00.0",
+        "server_id": 5,
+        "direct_conn_id": 2,
+        "switch_port_id": null
+    },
+    {
+        "id": 51,
+        "interface": "ens4f0np0",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.0",
+        "server_id": 5,
+        "direct_conn_id": null,
+        "switch_port_id": 242
+    },
+    {
+        "id": 52,
+        "interface": "ens3f1",
+        "manufacturer": "",
+        "pci_address": "0000:5e:00.1",
+        "server_id": 5,
+        "direct_conn_id": null,
+        "switch_port_id": 98
+    },
+    {
+        "id": 53,
+        "interface": "ens4f1np1",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.1",
+        "server_id": 5,
+        "direct_conn_id": 1,
+        "switch_port_id": null
+    },
+    {
+        "id": 54,
+        "interface": "enp2s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.1",
+        "server_id": 6,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 65,
+        "interface": "enp2s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.0",
+        "server_id": 6,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 66,
+        "interface": "enp129s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.1",
+        "server_id": 6,
+        "direct_conn_id": null,
+        "switch_port_id": 65
+    },
+    {
+        "id": 68,
+        "interface": "enp2s0f3",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.3",
+        "server_id": 6,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 70,
+        "interface": "enp2s0f2",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.2",
+        "server_id": 6,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 71,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 7,
+        "direct_conn_id": null,
+        "switch_port_id": 191
+    },
+    {
+        "id": 72,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 7,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 73,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 7,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 74,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 7,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 75,
+        "interface": "ens3f0",
+        "manufacturer": "",
+        "pci_address": "0000:5e:00.0",
+        "server_id": 7,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 76,
+        "interface": "ens3f1",
+        "manufacturer": "",
+        "pci_address": "0000:5e:00.1",
+        "server_id": 7,
+        "direct_conn_id": null,
+        "switch_port_id": 97
+    },
+    {
+        "id": 77,
+        "interface": "enp129s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.0",
+        "server_id": 8,
+        "direct_conn_id": null,
+        "switch_port_id": 171
+    },
+    {
+        "id": 78,
+        "interface": "enp2s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.0",
+        "server_id": 8,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 79,
+        "interface": "enp2s0f2",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.2",
+        "server_id": 8,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 80,
+        "interface": "enp2s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.1",
+        "server_id": 8,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 81,
+        "interface": "enp2s0f3",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.3",
+        "server_id": 8,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 82,
+        "interface": "enp129s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.1",
+        "server_id": 8,
+        "direct_conn_id": null,
+        "switch_port_id": 101
+    },
+    {
+        "id": 83,
+        "interface": "enp2s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.0",
+        "server_id": 9,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 84,
+        "interface": "enp129s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.0",
+        "server_id": 9,
+        "direct_conn_id": null,
+        "switch_port_id": 164
+    },
+    {
+        "id": 85,
+        "interface": "enp2s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.1",
+        "server_id": 9,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 86,
+        "interface": "enp2s0f3",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.3",
+        "server_id": 9,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 87,
+        "interface": "enp2s0f2",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.2",
+        "server_id": 9,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 88,
+        "interface": "enp129s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.1",
+        "server_id": 9,
+        "direct_conn_id": null,
+        "switch_port_id": 117
+    },
+    {
+        "id": 89,
+        "interface": "enp129s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.1",
+        "server_id": 10,
+        "direct_conn_id": null,
+        "switch_port_id": 102
+    },
+    {
+        "id": 90,
+        "interface": "enp2s0f2",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.2",
+        "server_id": 10,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 91,
+        "interface": "enp2s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.1",
+        "server_id": 10,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 92,
+        "interface": "enp2s0f3",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.3",
+        "server_id": 10,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 93,
+        "interface": "enp129s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.0",
+        "server_id": 10,
+        "direct_conn_id": null,
+        "switch_port_id": 148
+    },
+    {
+        "id": 94,
+        "interface": "enp2s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.0",
+        "server_id": 10,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 95,
+        "interface": "enp129s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.1",
+        "server_id": 11,
+        "direct_conn_id": null,
+        "switch_port_id": 133
+    },
+    {
+        "id": 96,
+        "interface": "enp2s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.1",
+        "server_id": 11,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 97,
+        "interface": "enp2s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.0",
+        "server_id": 11,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 98,
+        "interface": "enp129s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.0",
+        "server_id": 11,
+        "direct_conn_id": null,
+        "switch_port_id": 71
+    },
+    {
+        "id": 99,
+        "interface": "enp2s0f2",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.2",
+        "server_id": 11,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 100,
+        "interface": "enp2s0f3",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.3",
+        "server_id": 11,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 101,
+        "interface": "enp2s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.0",
+        "server_id": 12,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 102,
+        "interface": "enp2s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.1",
+        "server_id": 12,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 103,
+        "interface": "enp2s0f2",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.2",
+        "server_id": 12,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 104,
+        "interface": "enp2s0f3",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.3",
+        "server_id": 12,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 105,
+        "interface": "enp129s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.0",
+        "server_id": 12,
+        "direct_conn_id": null,
+        "switch_port_id": 175
+    },
+    {
+        "id": 106,
+        "interface": "enp129s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.1",
+        "server_id": 12,
+        "direct_conn_id": null,
+        "switch_port_id": 174
+    },
+    {
+        "id": 107,
+        "interface": "enp2s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.0",
+        "server_id": 13,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 108,
+        "interface": "enp2s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.1",
+        "server_id": 13,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 109,
+        "interface": "enp2s0f2",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.2",
+        "server_id": 13,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 110,
+        "interface": "enp2s0f3",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.3",
+        "server_id": 13,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 112,
+        "interface": "enp129s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.1",
+        "server_id": 13,
+        "direct_conn_id": null,
+        "switch_port_id": 88
+    },
+    {
+        "id": 113,
+        "interface": "ib0",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.0",
+        "server_id": 14,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 114,
+        "interface": "ens2f1",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.1",
+        "server_id": 14,
+        "direct_conn_id": 3,
+        "switch_port_id": null
+    },
+    {
+        "id": 115,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 14,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 116,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 14,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 117,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 14,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 118,
+        "interface": "ens2f0",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.0",
+        "server_id": 14,
+        "direct_conn_id": null,
+        "switch_port_id": 139
+    },
+    {
+        "id": 119,
+        "interface": "ib1",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.1",
+        "server_id": 14,
+        "direct_conn_id": null,
+        "switch_port_id": 224
+    },
+    {
+        "id": 120,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 14,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 121,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 15,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 122,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 15,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 123,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 15,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 124,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 15,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 125,
+        "interface": "ibs4f0",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.0",
+        "server_id": 15,
+        "direct_conn_id": null,
+        "switch_port_id": 231
+    },
+    {
+        "id": 126,
+        "interface": "ibs4f1",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.1",
+        "server_id": 15,
+        "direct_conn_id": null,
+        "switch_port_id": 225
+    },
+    {
+        "id": 127,
+        "interface": "ib0",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.0",
+        "server_id": 16,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 128,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 16,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 129,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 16,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 130,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 16,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 131,
+        "interface": "ens1f0",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.0",
+        "server_id": 16,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 132,
+        "interface": "ens1f1",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.1",
+        "server_id": 16,
+        "direct_conn_id": null,
+        "switch_port_id": 135
+    },
+    {
+        "id": 133,
+        "interface": "ib1",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.1",
+        "server_id": 16,
+        "direct_conn_id": null,
+        "switch_port_id": 197
+    },
+    {
+        "id": 134,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 16,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 135,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 17,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 136,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 17,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 137,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 17,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 138,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 17,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 139,
+        "interface": "ens2f0",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.0",
+        "server_id": 17,
+        "direct_conn_id": null,
+        "switch_port_id": 140
+    },
+    {
+        "id": 140,
+        "interface": "ens2f1",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.1",
+        "server_id": 17,
+        "direct_conn_id": null,
+        "switch_port_id": 162
+    },
+    {
+        "id": 141,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 18,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 142,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 18,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 143,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 18,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 144,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 18,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 145,
+        "interface": "ens2f0",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.0",
+        "server_id": 18,
+        "direct_conn_id": null,
+        "switch_port_id": 157
+    },
+    {
+        "id": 146,
+        "interface": "ens2f1",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.1",
+        "server_id": 18,
+        "direct_conn_id": null,
+        "switch_port_id": 170
+    },
+    {
+        "id": 147,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 19,
+        "direct_conn_id": null,
+        "switch_port_id": 182
+    },
+    {
+        "id": 148,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 19,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 149,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 19,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 150,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 19,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 151,
+        "interface": "ens2f0",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.0",
+        "server_id": 19,
+        "direct_conn_id": 3,
+        "switch_port_id": null
+    },
+    {
+        "id": 152,
+        "interface": "ens2f1",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.1",
+        "server_id": 19,
+        "direct_conn_id": null,
+        "switch_port_id": 145
+    },
+    {
+        "id": 153,
+        "interface": "ib0",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.0",
+        "server_id": 19,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 154,
+        "interface": "ib1",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.1",
+        "server_id": 19,
+        "direct_conn_id": null,
+        "switch_port_id": 198
+    },
+    {
+        "id": 155,
+        "interface": "ib0",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.0",
+        "server_id": 20,
+        "direct_conn_id": null,
+        "switch_port_id": 208
+    },
+    {
+        "id": 156,
+        "interface": "ens2f1",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.1",
+        "server_id": 20,
+        "direct_conn_id": null,
+        "switch_port_id": 142
+    },
+    {
+        "id": 157,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 20,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 158,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 20,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 159,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 20,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 160,
+        "interface": "ens2f0",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.0",
+        "server_id": 20,
+        "direct_conn_id": null,
+        "switch_port_id": 141
+    },
+    {
+        "id": 161,
+        "interface": "ib1",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.1",
+        "server_id": 20,
+        "direct_conn_id": null,
+        "switch_port_id": 210
+    },
+    {
+        "id": 162,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 20,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 163,
+        "interface": "ens3f0",
+        "manufacturer": "",
+        "pci_address": "0000:5e:00.0",
+        "server_id": 22,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 164,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 22,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 165,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 22,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 166,
+        "interface": "ens3f1",
+        "manufacturer": "",
+        "pci_address": "0000:5e:00.1",
+        "server_id": 22,
+        "direct_conn_id": null,
+        "switch_port_id": 130
+    },
+    {
+        "id": 167,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 22,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 168,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 22,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 169,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 23,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 170,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 23,
+        "direct_conn_id": null,
+        "switch_port_id": 189
+    },
+    {
+        "id": 171,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 23,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 173,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 23,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 174,
+        "interface": "ens3f1",
+        "manufacturer": "",
+        "pci_address": "0000:5e:00.1",
+        "server_id": 23,
+        "direct_conn_id": null,
+        "switch_port_id": 114
+    },
+    {
+        "id": 175,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 24,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 176,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 24,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 177,
+        "interface": "ens3f1",
+        "manufacturer": "",
+        "pci_address": "0000:5e:00.1",
+        "server_id": 24,
+        "direct_conn_id": null,
+        "switch_port_id": 166
+    },
+    {
+        "id": 178,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 24,
+        "direct_conn_id": null,
+        "switch_port_id": 178
+    },
+    {
+        "id": 181,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 24,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 182,
+        "interface": "ens3f0",
+        "manufacturer": "",
+        "pci_address": "0000:5e:00.0",
+        "server_id": 24,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 183,
+        "interface": "ens85f0",
+        "manufacturer": "",
+        "pci_address": "0000:31:00.0",
+        "server_id": 25,
+        "direct_conn_id": null,
+        "switch_port_id": 9
+    },
+    {
+        "id": 184,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:4b:00.1",
+        "server_id": 25,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 185,
+        "interface": "enxb03af2b6059f",
+        "manufacturer": "",
+        "pci_address": "0000:00:14.0",
+        "server_id": 25,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 187,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:4b:00.0",
+        "server_id": 25,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 188,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:3d:00.1",
+        "server_id": 29,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 189,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:3d:00.0",
+        "server_id": 29,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 191,
+        "interface": "ens785f1",
+        "manufacturer": "",
+        "pci_address": "0000:18:00.1",
+        "server_id": 29,
+        "direct_conn_id": null,
+        "switch_port_id": 75
+    },
+    {
+        "id": 192,
+        "interface": "enp2s0",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.0",
+        "server_id": 31,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 193,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:00:1f.6",
+        "server_id": 31,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 194,
+        "interface": "enp25s0f0np0",
+        "manufacturer": "",
+        "pci_address": "0000:19:00.0",
+        "server_id": 31,
+        "direct_conn_id": null,
+        "switch_port_id": 183
+    },
+    {
+        "id": 195,
+        "interface": "enp25s0f1np1",
+        "manufacturer": "",
+        "pci_address": "0000:19:00.1",
+        "server_id": 31,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 196,
+        "interface": "enp4s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:04:00.0",
+        "server_id": 32,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 197,
+        "interface": "enp0s29u1u1u2",
+        "manufacturer": "",
+        "pci_address": "0000:00:1d.0",
+        "server_id": 32,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 198,
+        "interface": "enp2s0",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.0",
+        "server_id": 32,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 199,
+        "interface": "enp4s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:04:00.1",
+        "server_id": 32,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 200,
+        "interface": "enp4s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:04:00.1",
+        "server_id": 33,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 201,
+        "interface": "enx020000000002",
+        "manufacturer": "",
+        "pci_address": "0000:00:1d.0",
+        "server_id": 33,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 202,
+        "interface": "enp4s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:04:00.0",
+        "server_id": 33,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 203,
+        "interface": "enp2s0",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.0",
+        "server_id": 33,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 204,
+        "interface": "enp2s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.0",
+        "server_id": 34,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 205,
+        "interface": "enp2s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.1",
+        "server_id": 34,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 206,
+        "interface": "ma1",
+        "manufacturer": "",
+        "pci_address": "0000:08:00.0",
+        "server_id": 34,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 207,
+        "interface": "enxb03af2b6059f",
+        "manufacturer": "",
+        "pci_address": "0000:00:14.0",
+        "server_id": 26,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 208,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:4b:00.1",
+        "server_id": 26,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 210,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:4b:00.0",
+        "server_id": 26,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 211,
+        "interface": "ens85f1",
+        "manufacturer": "",
+        "pci_address": "0000:31:00.1",
+        "server_id": 26,
+        "direct_conn_id": null,
+        "switch_port_id": 235
+    },
+    {
+        "id": 212,
+        "interface": "enxb03af2b6059f",
+        "manufacturer": "",
+        "pci_address": "0000:00:14.0",
+        "server_id": 27,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 213,
+        "interface": "ens85f1",
+        "manufacturer": "",
+        "pci_address": "0000:31:00.1",
+        "server_id": 27,
+        "direct_conn_id": null,
+        "switch_port_id": 236
+    },
+    {
+        "id": 214,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:4b:00.0",
+        "server_id": 27,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 215,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:4b:00.1",
+        "server_id": 27,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 218,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:3d:00.1",
+        "server_id": 28,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 219,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:3d:00.0",
+        "server_id": 28,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 221,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:3d:00.0",
+        "server_id": 30,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 222,
+        "interface": "ens785f1np1",
+        "manufacturer": "",
+        "pci_address": "0000:18:00.1",
+        "server_id": 30,
+        "direct_conn_id": null,
+        "switch_port_id": 23
+    },
+    {
+        "id": 223,
+        "interface": "ens801f1",
+        "manufacturer": "",
+        "pci_address": "0000:b1:00.1",
+        "server_id": 30,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 224,
+        "interface": "ens801f0",
+        "manufacturer": "",
+        "pci_address": "0000:b1:00.0",
+        "server_id": 30,
+        "direct_conn_id": null,
+        "switch_port_id": 237
+    },
+    {
+        "id": 225,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:3d:00.1",
+        "server_id": 30,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 226,
+        "interface": "ens785f0np0",
+        "manufacturer": "",
+        "pci_address": "0000:18:00.0",
+        "server_id": 30,
+        "direct_conn_id": null,
+        "switch_port_id": 92
+    },
+    {
+        "id": 227,
+        "interface": "ens5f0",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.0",
+        "server_id": 21,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 228,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 21,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 229,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 21,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 230,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 21,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 231,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 21,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 232,
+        "interface": "ens5f1",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.1",
+        "server_id": 21,
+        "direct_conn_id": null,
+        "switch_port_id": 158
+    },
+    {
+        "id": 233,
+        "interface": "enp2s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.0",
+        "server_id": 35,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 234,
+        "interface": "enp2s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.1",
+        "server_id": 35,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 235,
+        "interface": "enp2s0f2",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.2",
+        "server_id": 35,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 236,
+        "interface": "enp2s0f3",
+        "manufacturer": "",
+        "pci_address": "0000:02:00.3",
+        "server_id": 35,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 237,
+        "interface": "enp129s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.0",
+        "server_id": 35,
+        "direct_conn_id": null,
+        "switch_port_id": 146
+    },
+    {
+        "id": 238,
+        "interface": "enp129s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.1",
+        "server_id": 35,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 240,
+        "interface": "ens2f1",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.1",
+        "server_id": 36,
+        "direct_conn_id": null,
+        "switch_port_id": 147
+    },
+    {
+        "id": 241,
+        "interface": "eno3",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.2",
+        "server_id": 36,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 242,
+        "interface": "eno2",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.1",
+        "server_id": 36,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 243,
+        "interface": "eno1",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.0",
+        "server_id": 36,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 244,
+        "interface": "ens2f0",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.0",
+        "server_id": 36,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 246,
+        "interface": "eno4",
+        "manufacturer": "",
+        "pci_address": "0000:1a:00.3",
+        "server_id": 36,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 255,
+        "interface": "ens785f1",
+        "manufacturer": "",
+        "pci_address": "0000:18:00.1",
+        "server_id": 28,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 257,
+        "interface": "enp129s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.0",
+        "server_id": 6,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 258,
+        "interface": "enp129s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:81:00.0",
+        "server_id": 13,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 259,
+        "interface": "ens3f0",
+        "manufacturer": "",
+        "pci_address": "0000:5e:00.0",
+        "server_id": 23,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 260,
+        "interface": "ens85f0",
+        "manufacturer": "",
+        "pci_address": "0000:31:00.0",
+        "server_id": 26,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 261,
+        "interface": "ens85f0",
+        "manufacturer": "",
+        "pci_address": "0000:31:00.0",
+        "server_id": 27,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 262,
+        "interface": "ens1d1",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.0",
+        "server_id": 24,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 263,
+        "interface": "ens1d1",
+        "manufacturer": "",
+        "pci_address": "0000:3b:00.0",
+        "server_id": 24,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 264,
+        "interface": "ens785f0",
+        "manufacturer": "",
+        "pci_address": "0000:18:00.0",
+        "server_id": 28,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 265,
+        "interface": "ibp134s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.0",
+        "server_id": 17,
+        "direct_conn_id": null,
+        "switch_port_id": 206
+    },
+    {
+        "id": 266,
+        "interface": "ibp134s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.1",
+        "server_id": 17,
+        "direct_conn_id": null,
+        "switch_port_id": 226
+    },
+    {
+        "id": 267,
+        "interface": "ibp134s0f0",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.0",
+        "server_id": 36,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    },
+    {
+        "id": 268,
+        "interface": "ibp134s0f1",
+        "manufacturer": "",
+        "pci_address": "0000:86:00.1",
+        "server_id": 36,
+        "direct_conn_id": null,
+        "switch_port_id": 215
+    },
+    {
+        "id": 269,
+        "interface": "ens85f1",
+        "manufacturer": "",
+        "pci_address": "0000:31:00.1",
+        "server_id": 25,
+        "direct_conn_id": null,
+        "switch_port_id": null
+    }
+]
