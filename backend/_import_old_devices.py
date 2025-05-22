@@ -107,7 +107,7 @@ def main():
             for o2 in old_ifaces:
                 if o1['id'] == o2['id']:
                     continue
-                if not o2.get('direct_conn_id') or o1['direct_conn_id'] != o2['direct_conn_id']:
+                if o2.get('direct_conn_id') is None or o1['direct_conn_id'] != o2['direct_conn_id']:
                     continue
                 iface1 = iface_map.get(o1['id'])
                 iface2 = iface_map.get(o2['id'])
@@ -126,17 +126,17 @@ def main():
 
         # create connections between switch ports
         for o1 in old_ports:
-            if not o1.get('direct_switch_id'):
+            if o1.get('direct_switch_id') is None:
                 continue
             for o2 in old_ports:
                 if o1['id'] == o2['id']:
                     continue
-                if not o2.get('direct_switch_id') or o1['direct_switch_id'] != o2['direct_switch_id']:
+                if o2.get('direct_switch_id') is None or o1['direct_switch_id'] != o2['direct_switch_id']:
                     continue
                 port1 = port_map.get(o1['id'])
                 port2 = port_map.get(o2['id'])
                 if not port1 or not port2:
-                    continue    
+                    continue
                 if port1.conn_id is not None or port2.conn_id is not None:
                     if port1.conn_id != port2.conn_id:
                         print(f"Switch port {port1.id} and {port2.id} have different connection IDs. error")
