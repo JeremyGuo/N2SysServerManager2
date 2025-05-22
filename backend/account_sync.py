@@ -256,6 +256,40 @@ async def syncServer(server: Server):
                     db.close()
 
                     # Step 4 - Get the account login history
+                    db = SessionLocal()
+                    accounts = db.query(Account).filter(Account.server_id == server.id, Account.is_login_able == True).all()
+                    for account in accounts:
+                        db.refresh(account); db.expunge(account); make_transient(account)
+                    db.close()
+                    for account in accounts:
+                        db = SessionLocal()
+                        try:
+                            user = db.query(User).filter(User.id == account.user_id).first()
+                            if not user:
+                                db.close()
+                                raise Exception(f"User {account.user_id} not found in database.")
+                            account_name =  user.account_name
+                            db.close()
+                            status, login_date = await sshServerGetAccountLoginDate(conn, account_name)
+                            if not status:
+                                logger.error(f"Error collecting login date from server {server.host} for account {account_name}: {login_date}")
+                                continue
+                            # convert from +%Y-%m-%d %H:%M:%S to datetime
+                            logger.info(f"Collecting login date from server {server.host} for account {account_name} {login_date}")
+                            date = datetime.datetime.strptime(login_date, "%Y-%m-%d %H:%M:%S")
+                            db = SessionLocal()
+                            account_db = db.query(Account).filter(Account.id == account.id).first()
+                            if not account_db:
+                                db.close()
+                                raise Exception(f"Account {account.id} not found in database.")
+                            # update if date is newer
+                            if account_db.last_login_date < date:
+                                account_db.last_login_date = date
+                                db.commit()
+                            db.close()
+                        except Exception as e:
+                            logger.error(f"Error collecting login history for account {account.id} on server {server.host}: {str(e)}")
+                            continue
                 except Exception as e:
                     logger.error(f"Error collecting data from server {server.host}: {e}")
                     server.server_status = ServerStatus.NO_PERMISSION

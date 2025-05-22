@@ -1,4 +1,5 @@
 import asyncssh
+from logger import logger
 
 async def sshServerGetKernel(conn: asyncssh.SSHClientConnection) -> str:
     """
@@ -94,13 +95,13 @@ async def sshServerGetNICs(conn: asyncssh.SSHClientConnection) -> list[dict]:
                 break
     return nics
 
-async def sshServerGetAccountLoginDate(conn: asyncssh.SSHClientConnection) -> str:
+async def sshServerGetAccountLoginDate(conn: asyncssh.SSHClientConnection, user: str) -> tuple[bool, str]:
     """
     Get the last login date of the server of all users
     """
-    result = await conn.run("last -F | grep -i 'still logged in'", timeout=3)
+    cmd = f"""{{ last -F -R "{user}" 2>/dev/null | head -1 | grep -q 'still logged in' && date '+%Y-%m-%d %H:%M:%S' || date -d "$(last -F -R "{user}" 2>/dev/null | head -1 | awk '{{print $10, $11, $12, $13}}')" '+%Y-%m-%d %H:%M:%S'; }} || echo '1970-01-01 00:00:00'"""
+    result = await conn.run(cmd, timeout=6)
     if result.exit_status != 0:
         err_result = result.stderr.strip()
-        return ""
-    login_date = result.stdout.strip().splitlines()
-    return login_date
+        return False, ""
+    return True, result.stdout.strip()
