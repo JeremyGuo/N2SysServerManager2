@@ -1,6 +1,13 @@
 <template>
   <div>
-    <el-table :data="tableData" :span-method="spanMethod" :fit="true" style="width: 90%; margin: auto;" :default-sort="{ prop: 'host', order: 'ascending' }">
+    <el-table 
+      ref="tableRef"
+      :data="tableData" 
+      :span-method="spanMethod" 
+      :fit="true" 
+      style="width: 90%; margin: auto;" 
+      :default-sort="{ prop: 'host', order: 'ascending' }"
+    >
       <!-- Grouped Host columns -->
       <el-table-column label="Host">
         <el-table-column prop="host" label="Host Name" sortable />
@@ -94,11 +101,15 @@ function filterGateway(value, row) {
   return row.isGateway === value;
 }
 
+// add a ref to access the table's internal data after sort/filter
+const tableRef = ref(null);
+
 // merge rows when host-level fields are the same
 function spanMethod({ row, column, rowIndex }) {
   const fields = ['host', 'status', 'isGateway', 'isMounted'];
   if (!fields.includes(column.property)) return;
-  const data = tableData.value;
+  // use the table's rendered data (after sorting/filtering) if available
+  const data = tableRef.value?.store.states.data.value || tableData.value;
   // skip if same as previous
   if (rowIndex > 0) {
     const prev = data[rowIndex - 1];
