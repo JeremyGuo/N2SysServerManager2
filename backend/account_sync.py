@@ -230,7 +230,7 @@ async def syncServer(server: Server):
                         else:
                             new_interface = ServerInterface(
                                 pci_address=nic["pci_address"],
-                                interface=nic["interface_name"],
+                                interface=nic["interface_name"] if nic["interface_name"] else "No Name Eth",
                                 manufacturer=nic["nic_name"],
                                 server_id=server.id
                             )
@@ -242,7 +242,7 @@ async def syncServer(server: Server):
                             ServerInterface.pci_address == ib_nic["pci_address"]
                         ).first()
                         if old_interface:
-                            old_interface.interface = ib_nic["interface_name"]
+                            old_interface.interface = ib_nic["interface_name"] if ib_nic["interface_name"] else "No Name IB"
                             old_interface.manufacturer = ib_nic["nic_name"]
                         else:
                             new_interface = ServerInterface(
