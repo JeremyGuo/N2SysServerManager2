@@ -362,6 +362,17 @@ async def watchAccountSync():
                     logger.info(f"Automatically disabled account {account.id} for user {account.user.username} on server {account.server.host}")
             
             # Routine 4 - TODO - auto revoke account if the user is inactive for a long time
+            accounts = db.query(Account).filter(Account.is_login_able == True).all()
+            for account in accounts:
+                if account.server.is_gateway:
+                    continue
+                if account.user.is_admin:
+                    continue
+                if account.last_login_date < datetime.datetime.now() - datetime.timedelta(days=30):
+                    account.is_login_able = False
+                    account.status = AccountStatus.DIRTY
+                    db.commit()
+                    logger.info(f"Automatically disabled account {account.id} for user {account.user.username} on server {account.server.host}")
 
             # Routine 5 - TODO - collect usage data from the servers
             servers = db.query(Server).all()
