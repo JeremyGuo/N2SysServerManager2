@@ -48,8 +48,8 @@ def main():
                 continue
             phy_row = o.get('phy_row')
             phy_col = o.get('phy_col')
-            if not phy_row or not phy_col:
-                print(f"Switch port {o['id']} has no phy_row or phy_col. error")
+            if phy_row is None or phy_col is None:
+                print(f"Switch port {o['id']} has no phy_row {phy_row} or phy_col {phy_col}. error")
                 os._exit(1)
             sp = db.query(SwitchPort).filter_by(
                 switch_id=parent.id,
@@ -84,7 +84,7 @@ def main():
             iface = iface_map.get(o['id'])
             if not iface:
                 continue
-            if not o.get('switch_port_id'):
+            if o.get('switch_port_id') is None:
                 continue
             port = port_map.get(o.get('switch_port_id'))
             if not port:
@@ -102,7 +102,7 @@ def main():
         
         # create connections between server interfaces
         for o1 in old_ifaces:
-            if not o1.get('direct_conn_id'):
+            if o1.get('direct_conn_id') is None:
                 continue
             for o2 in old_ifaces:
                 if o1['id'] == o2['id']:
