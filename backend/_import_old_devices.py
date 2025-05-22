@@ -75,8 +75,11 @@ def main():
                 pci_address=pciaddr
             ).first()
             if not si:
-                print(f"Server interface {o['id']} not found in DB. error")
-                os._exit(1)
+                if (o.get('direct_conn_id') is not None or o.get('switch_port_id') is not None):
+                    print(f"Server interface {o['id']} not found in DB. error")
+                    os._exit(1)
+                else:
+                    print(f"Server interface {o['id']} not found in DB. however, securely ignore it")
             iface_map[o['id']] = si
 
         # create connections between switch ports and server interfaces
