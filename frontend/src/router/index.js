@@ -7,6 +7,7 @@ import Login from '../views/Login.vue'
 import Register from '../views/Register.vue'
 import Profile from '../views/Profile.vue'
 import ServerInfo from '../views/ServerInfo.vue'
+import ApplyMachines from '../views/ApplyMachines.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -30,6 +31,11 @@ const router = createRouter({
       path: '/servers',
       name: 'Servers',
       component: Servers
+    },
+    {
+      path: '/apply',
+      name: 'ApplyMachines',
+      component: ApplyMachines
     },
     {
       path: '/devices',

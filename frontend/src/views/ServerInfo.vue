@@ -1,6 +1,10 @@
 <template>
   <el-container>
-    <el-main>
+    <el-main v-loading="loading">
+      <el-alert v-if="loadFailed" title="Some server details could not be loaded. See the error details and retry." type="error" :closable="false" />
+      <el-button v-if="loadFailed" @click="loadPage(route.params.id)">Retry</el-button>
+      <el-alert v-if="refreshQueued" title="Refresh queued — background collection is not complete yet. Reload details later to check progress." type="info" :closable="false" />
+      <el-button v-if="refreshQueued" @click="reloadDetails" :loading="loading">Reload details</el-button>
       <el-card class="card-spacing">
         <el-row>
           <el-col :span="24">
@@ -42,7 +46,7 @@
                 </template>
                 <template v-else>
                   <el-tag v-for="tag in server.tags" :key="tag.id" closable @close="removeServerTag(tag.id)">{{ tag.tag }}</el-tag>
-                  <el-button size="small" v-if="!show_new_server_tag" @click="showAddNewServerTag">+ New Tag</el-button>
+                  <el-button size="small" v-if="!show_new_server_tag" @click="showAddNewServerTag" :disabled="addingServerTag || !server.id">+ New Tag</el-button>
                   <el-input v-else v-model="new_server_tag_value" size="small" style="width:80px" @keyup.enter="confirmServerTagInput" @blur="confirmServerTagInput" />
                 </template>
               </el-form-item>
@@ -53,7 +57,7 @@
                       <el-input v-model="server.ipmi" placeholder="IPMI Information" class="full-width-input" />
                     </el-col>
                     <el-col :span="6">
-                      <el-button type="primary" @click="saveIPMI">Save</el-button>
+                      <el-button type="primary" @click="saveIPMI" :loading="savingIPMI" :disabled="!server.id">Save</el-button>
                     </el-col>
                   </el-row>
                 </template>
@@ -62,19 +66,21 @@
                 </template>
               </el-form-item>
               <el-form-item v-if="currentUser.is_admin" label="Actions">
-                <el-button type="primary" class="button-spacing" @click="refreshServer">Refresh Server Status</el-button>
+                <el-button type="primary" class="button-spacing" @click="refreshServer" :loading="refreshing" :disabled="refreshQueued || !server.id">{{ refreshQueued ? 'Refresh queued' : 'Refresh Server Status' }}</el-button>
               </el-form-item>
             </el-form>
           </el-col>
         </el-row>
       </el-card>
 
+      <el-card class="card-spacing"><HardwareDetails :hardware="server.hardware" /></el-card>
+
       <el-card class="card-spacing">
         <el-row>
           <el-col :span="24">
             <h2>Server Interfaces</h2>
             <el-divider />
-            <el-table :data="server.interfaces" style="width: 100%">
+            <el-table :data="server.interfaces" empty-text="No interfaces reported" style="width: 100%">
               <el-table-column label="Interface Name">
                 <template #default="{ row }">
                   <el-tooltip :content="row.manufacturer" placement="top">
@@ -86,7 +92,7 @@
                 <template #default="{ row }">
                   <template v-if="currentUser.is_admin">
                     <el-tag v-for="tag in row.tags" :key="tag.id" closable @close="removeTag(tag.id)">{{ tag.tag }}</el-tag>
-                    <el-button size="small" v-if="!row.show_new_tag" @click="showAddNewTag(row)">+ New Tag</el-button>
+                    <el-button size="small" v-if="!row.show_new_tag" @click="showAddNewTag(row)" :disabled="addingInterfaceTag">+ New Tag</el-button>
                     <el-input v-else v-model="new_tag_value" size="small" style="width:80px" @keyup.enter="confirmTagInput(row)" @blur="confirmTagInput(row)" />
                   </template>
                   <template v-else>
@@ -123,7 +129,7 @@
         </el-row>
       </el-card>
 
-      <el-dialog title="连接设置" v-model="showModal">
+      <el-dialog title="连接设置" v-model="showModal" @closed="clearHost">
         <el-radio-group v-model="connectionType">
           <el-radio-button label="断开" />
           <el-radio-button label="直连" />
@@ -137,17 +143,18 @@
                 :fetch-suggestions="hostQuerySearch"
                 placeholder="Server Hostname"
                 @select="handleHostSelect"
+                @input="clearHost"
               />
             </el-form-item>
             <el-form-item label="Interface 名字">
-              <el-autocomplete v-model="directConnection.interfaceName" :fetch-suggestions="hostInterQuerySearch" placeholder="Interface Name" />
+              <el-autocomplete v-model="directConnection.interfaceName" :fetch-suggestions="hostInterQuerySearch" placeholder="Interface (with PCI)" :disabled="!selectedServerId" @select="selectTarget" @input="selectedTargetId = null" />
             </el-form-item>
           </el-form>
         </div>
         <div v-if="connectionType === '交换机'" style="margin-top:20px;">
           <el-form>
             <el-form-item label="交换机名字">
-              <el-autocomplete v-model="switchConnection.switchName" :fetch-suggestions="switchQuerySearch" placeholder="请输入交换机名字" @select="handleSelectSwitch" />
+              <el-autocomplete v-model="switchConnection.switchName" :fetch-suggestions="switchQuerySearch" placeholder="请输入交换机名字" @select="handleSelectSwitch" @input="clearSwitch" />
             </el-form-item>
             <el-form-item label="交换机端口号">
               <el-input v-model="switchConnection.switchPort" type="number" />
@@ -156,7 +163,7 @@
         </div>
         <template #footer>
           <el-button @click="showModal = false">取消</el-button>
-          <el-button type="primary" @click="saveChanges">保存</el-button>
+          <el-button type="primary" @click="saveChanges" :loading="saving" :disabled="!currentUser.is_admin">保存</el-button>
         </template>
       </el-dialog>
     </el-main>
@@ -164,271 +171,216 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { ref, reactive, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-
-const router = useRouter()
+import { apiFetch, reportError } from '../api.js'
+import { interfaceLabel, resolveInterface } from '../selection.js'
+import HardwareDetails from '../components/HardwareDetails.vue'
 const route = useRoute()
 const currentUser = ref({ id: null, is_admin: false })
-const server = reactive({
-  id: null,
-  host: '',
-  port: '',
-  is_gateway: false,
-  server_status: '',
-  is_separated_home: false,
-  os_version: '',
-  kernel_version: '',
-  tags: [],
-  ipmi: '',
-  interfaces: []
-})
-
+const emptyServer = () => ({ id: null, host: '', port: '', proxy_server: null, is_gateway: false, server_status: '', is_separated_home: false, os_version: '', kernel_version: '', tags: [], ipmi: '', interfaces: [], hardware: {} })
+const server = reactive(emptyServer())
+const loading = ref(false)
+const loadFailed = ref(false)
+const saving = ref(false)
+const savingIPMI = ref(false)
+const refreshing = ref(false)
+const refreshQueued = ref(false)
 const show_new_server_tag = ref(false)
 const new_server_tag_value = ref('')
 const new_tag_value = ref('')
 const old_tag_row_obj = ref(null)
-
-// 新增：连接对话框相关状态
+const addingServerTag = ref(false)
+const addingInterfaceTag = ref(false)
 const showModal = ref(false)
 const connectionType = ref('断开')
 const selectedInterfaceId = ref(null)
 const directConnection = reactive({ host: '', interfaceName: '' })
 const switchConnection = reactive({ switchName: '', switchPort: null, switchId: null })
-const devices = ref([])
 const switches = ref([])
-
-// 新增：所有 Server 列表，用于 Host 联想
 const allServers = ref([])
-
-// 新增：记录目标服务器 ID 及其接口列表
 const selectedServerId = ref(null)
+const selectedTargetId = ref(null)
 const targetInterfaces = ref([])
-
-// 新增：缓存每台交换机的 num_col 用于端口号计算
-const serverSwitchCols = reactive(
-  Object.fromEntries(switches.value.map(sw => [sw.id, sw.num_col]))
-)
-
-onMounted(async () => {
-  // 1. 拉取当前用户，判断是否 admin
-  const usrRes = await fetch('/api/user/me', { credentials: 'include' })
-  if (usrRes.ok) {
-    const u = await usrRes.json()
-    currentUser.value.id = u.id
-    currentUser.value.is_admin = u.is_admin
-  }
-  // 2. 拉取 Server 详情
-  const id = route.params.id
-  const res = await fetch(`/api/server/${id}`, { credentials: 'include' })
-  if (res.ok) {
-    const data = await res.json()
-    Object.assign(server, data)
-  } else {
-    ElMessage.error('Failed to load server info')
-    router.push({ name: 'Servers' })
-  }
-
-  // 拉取交换机及端口信息
-  const devRes = await fetch('/api/link/devices', { credentials: 'include' })
-  if (devRes.ok) {
-    const data = await devRes.json()
-    devices.value = data
-    switches.value = data.map(sw => ({
-      id: sw.id,
-      value: sw.name,
-      num_col: sw.num_col,
-      num_row: sw.num_row, // store number of rows for port index calc
-      ports: sw.ports
-    }))
-  }
-
-  // 修改：拉取所有 Server 用于 Host 联想
-  const listRes = await fetch('/api/server/list', { credentials: 'include' })
-  if (listRes.ok) {
-    allServers.value = await listRes.json()
-  }
-})
-
-function removeServerTag(tag_id) {
-  fetch('/api/server/tag/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_id }) })
-    .then(r => {
-      if (!r.ok) throw new Error()
-      server.tags = server.tags.filter(t => t.id !== tag_id)
-    })
-    .catch(() => ElMessage.error('Failed to remove tag'))
+let hostRequest = 0
+let pageRequest = 0
+const post = (url, body) => apiFetch(url, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+async function loadServer(id = route.params.id) {
+  const request = pageRequest
+  const data = await (await apiFetch(`/api/server/${encodeURIComponent(id)}`, { credentials: 'include' })).json()
+  if (request === pageRequest && String(route.params.id) === String(id)) Object.assign(server, data)
 }
-
-function removeTag(tag_id) {
-  fetch('/api/server/interface/tag/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tag_id }) })
-    .then(r => {
-      if (!r.ok) throw new Error()
-      server.interfaces.forEach(rw => {
-        rw.tags = rw.tags.filter(t => t.id !== tag_id)
-      })
-    })
-    .catch(() => ElMessage.error('Failed to remove tag'))
-}
-
-function confirmServerTagInput() {
-  const v = new_server_tag_value.value.trim()
+async function loadPage(id) {
+  const request = ++pageRequest
+  loading.value = true
+  loadFailed.value = false
+  Object.assign(server, emptyServer())
+  showModal.value = false
   show_new_server_tag.value = false
-  if (v) {
-    fetch('/api/server/tag/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: route.params.id, tag: v }) })
-      .then(r => {
-        if (!r.ok) throw new Error()
-        return r.json()
-      })
-      .then(data => {
-        server.tags.push(data)
-      })
-      .catch(() => ElMessage.error('Failed to add tag'))
-  }
-}
-
-function showAddNewServerTag() { new_server_tag_value.value = ''; show_new_server_tag.value = true }
-
-function showAddNewTag(row) { if (old_tag_row_obj.value) confirmTagInput(old_tag_row_obj.value); new_tag_value.value = ''; row.show_new_tag = true; old_tag_row_obj.value = row }
-
-function confirmTagInput(row) {
-  row.show_new_tag = false
-  const v = new_tag_value.value.trim()
   old_tag_row_obj.value = null
-  if (v) {
-    fetch('/api/server/interface/tag/add', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ interface_id: row.id, tag: v }) })
-      .then(r => {
-        if (!r.ok) throw new Error()
-        return r.json()
-      })
-      .then(data => {
-        row.tags.push(data)
-      })
-      .catch(() => ElMessage.error('Failed to add tag'))
+  new_server_tag_value.value = new_tag_value.value = ''
+  refreshQueued.value = false
+  selectedInterfaceId.value = null
+  clearHost()
+  try {
+    await Promise.all([
+      loadServer(id),
+      apiFetch('/api/user/me', { credentials: 'include' }).then(r => r.json()).then(data => { if (request === pageRequest) currentUser.value = data }),
+      apiFetch('/api/link/devices', { credentials: 'include' }).then(r => r.json()).then(data => { if (request === pageRequest) switches.value = data }),
+      apiFetch('/api/server/list', { credentials: 'include' }).then(r => r.json()).then(data => { if (request === pageRequest) allServers.value = data })
+    ])
+  } catch (error) { if (request === pageRequest) loadFailed.value = true; reportError(error) }
+  finally { if (request === pageRequest) loading.value = false }
+}
+watch(() => route.params.id, loadPage, { immediate: true })
+async function removeServerTag(tag_id) {
+  if (!currentUser.value.is_admin) return
+  const id = server.id
+  await post('/api/server/tag/remove', { tag_id })
+  if (server.id === id) server.tags = server.tags.filter(t => t.id !== tag_id)
+}
+async function removeTag(tag_id) {
+  if (!currentUser.value.is_admin) return
+  const id = server.id
+  await post('/api/server/interface/tag/remove', { tag_id })
+  if (server.id === id) server.interfaces.forEach(row => { row.tags = row.tags.filter(t => t.id !== tag_id) })
+}
+async function confirmServerTagInput() {
+  // Enter removes the input and emits blur too: consume the draft synchronously once.
+  if (!currentUser.value.is_admin || !show_new_server_tag.value || addingServerTag.value) return
+  const tag = new_server_tag_value.value.trim()
+  const id = server.id
+  show_new_server_tag.value = false
+  new_server_tag_value.value = ''
+  if (!tag) return
+  addingServerTag.value = true
+  try {
+    const data = await (await post('/api/server/tag/add', { server_id: id, tag })).json()
+    if (server.id === id) server.tags.push(data)
+  } catch (error) {
+    if (server.id === id) { new_server_tag_value.value = tag; show_new_server_tag.value = true }
+    reportError(error)
+  } finally { addingServerTag.value = false }
+}
+function showAddNewServerTag() {
+  if (!addingServerTag.value) { new_server_tag_value.value = ''; show_new_server_tag.value = true }
+}
+async function showAddNewTag(row) {
+  if (addingInterfaceTag.value) return
+  if (old_tag_row_obj.value && old_tag_row_obj.value !== row) {
+    await confirmTagInput(old_tag_row_obj.value)
+    if (old_tag_row_obj.value) return // Keep a failed draft instead of silently discarding it.
   }
+  new_tag_value.value = ''
+  row.show_new_tag = true
+  old_tag_row_obj.value = row
 }
-
-function refreshServer() { fetch('/api/server/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: route.params.id }) }).then(() => location.reload()) }
-
-// 修改：Host 联想带回 id
+async function confirmTagInput(row) {
+  if (!currentUser.value.is_admin || !row.show_new_tag || old_tag_row_obj.value !== row || addingInterfaceTag.value) return
+  const tag = new_tag_value.value.trim()
+  const id = server.id
+  row.show_new_tag = false
+  old_tag_row_obj.value = null
+  new_tag_value.value = ''
+  if (!tag) return
+  addingInterfaceTag.value = true
+  try {
+    const data = await (await post('/api/server/interface/tag/add', { interface_id: row.id, tag })).json()
+    if (server.id === id) row.tags.push(data)
+  } catch (error) {
+    if (server.id === id) { new_tag_value.value = tag; row.show_new_tag = true; old_tag_row_obj.value = row }
+    reportError(error)
+  } finally { addingInterfaceTag.value = false }
+}
+async function refreshServer() {
+  if (!currentUser.value.is_admin || refreshing.value || refreshQueued.value || !server.id) return
+  const id = server.id
+  refreshing.value = true
+  try {
+    await post('/api/server/refresh', { server_id: id })
+    if (server.id === id) refreshQueued.value = true
+    ElMessage.success('Refresh queued. Collection runs in the background; reload details later to see the result.')
+  } finally { refreshing.value = false }
+}
+async function reloadDetails() {
+  loading.value = true
+  try { await loadServer(); refreshQueued.value = false }
+  finally { loading.value = false }
+}
 function hostQuerySearch(query, cb) {
-  cb(
-    allServers.value
-      .filter(s => s.host && s.host.toLowerCase().includes(query.toLowerCase()))
-      .map(s => ({ id: s.id, value: s.host }))
-  )
+  cb(allServers.value.filter(s => s.host?.toLowerCase().includes(query.toLowerCase())).map(s => ({ id: s.id, value: s.host })))
 }
-
-// 新增：选择 Host 后拉取该服务器详情，并缓存其接口
+function clearHost() {
+  hostRequest++
+  selectedServerId.value = null
+  selectedTargetId.value = null
+  directConnection.interfaceName = ''
+  targetInterfaces.value = []
+}
 async function handleHostSelect(item) {
+  clearHost()
   selectedServerId.value = item.id
   directConnection.host = item.value
-  const res = await fetch(`/api/server/${item.id}`, { credentials: 'include' })
-  if (res.ok) {
-    const data = await res.json()
-    targetInterfaces.value = data.interfaces || []
-  } else {
-    ElMessage.error('Failed to load server interfaces')
-    targetInterfaces.value = []
-  }
+  const request = hostRequest
+  const data = await (await apiFetch(`/api/server/${item.id}`, { credentials: 'include' })).json()
+  if (request === hostRequest && showModal.value && selectedServerId.value === item.id) targetInterfaces.value = data.interfaces || []
 }
-
-// 修改：Interface 联想基于 targetInterfaces
 function hostInterQuerySearch(query, cb) {
-  cb(
-    targetInterfaces.value
-      .filter(i => i.interface && i.interface.toLowerCase().includes(query.toLowerCase()))
-      .map(i => ({ value: i.interface, id: i.id }))
-  )
+  cb(targetInterfaces.value.filter(i => i.interface && interfaceLabel(i).toLowerCase().includes(query.toLowerCase()))
+    .map(i => ({ value: interfaceLabel(i), id: i.id })))
 }
-
-// 覆盖：联想搜索交换机
+function selectTarget(item) { directConnection.interfaceName = item.value; selectedTargetId.value = item.id }
 function switchQuerySearch(query, cb) {
-  cb(
-    switches.value
-      .filter(s => s.value.toLowerCase().includes(query.toLowerCase()))
-      .map(s => ({ id: s.id, value: s.value }))
-  )
+  cb(switches.value.filter(s => s.name?.toLowerCase().includes(query.toLowerCase())).map(s => ({ id: s.id, value: s.name })))
 }
-
-// 新增：选择交换机时记录 ID
-function handleSelectSwitch(item) {
-  switchConnection.switchName = item.value
-  switchConnection.switchId = item.id
-}
-
-// 新增：打开连接对话框
+function clearSwitch() { switchConnection.switchId = null; switchConnection.switchPort = null }
+function handleSelectSwitch(item) { clearSwitch(); switchConnection.switchName = item.value; switchConnection.switchId = item.id }
 function showLinkToDialog(id) {
+  if (!currentUser.value.is_admin) return
   selectedInterfaceId.value = id
   showModal.value = true
   connectionType.value = '断开'
+  clearHost()
   directConnection.host = ''
-  directConnection.interfaceName = ''
-  switchConnection.switchName = ''
-  switchConnection.switchPort = null
-  switchConnection.switchId = null
+  Object.assign(switchConnection, { switchName: '', switchPort: null, switchId: null })
 }
-
-// 覆盖：保存连接逻辑
 async function saveChanges() {
+  if (!currentUser.value.is_admin || saving.value || !server.interfaces.some(i => i.id === selectedInterfaceId.value)) return
+  const id = server.id
+  saving.value = true
   try {
+    let url, body
     if (connectionType.value === '断开') {
-      await fetch('/api/link/interface/disconnect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ interface_id: selectedInterfaceId.value })
-      })
-      ElMessage.success('Disconnected')
+      url = '/api/link/interface/disconnect'
+      body = { interface_id: selectedInterfaceId.value }
     } else if (connectionType.value === '直连') {
-      const target = targetInterfaces.value.find(
-        i => i.interface === directConnection.interfaceName
-      )
-      if (!target) throw new Error('Interface not found')
-      await fetch('/api/link/interface/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          interface_a_id: selectedInterfaceId.value,
-          interface_b_id: target.id
-        })
-      })
-      ElMessage.success('Connected Directly')
+      const host = allServers.value.find(s => s.id === selectedServerId.value && s.host === directConnection.host)
+      const target = resolveInterface(targetInterfaces.value, directConnection.interfaceName, selectedTargetId.value)
+      if (!host || !target || target.id === selectedInterfaceId.value) return ElMessage.warning('Select a different, exact target interface (including PCI) from the suggestions.')
+      url = '/api/link/interface/connect'
+      body = { interface_a_id: selectedInterfaceId.value, interface_b_id: target.id }
     } else if (connectionType.value === '交换机') {
-      if (!switchConnection.switchId || switchConnection.switchPort === null)
-        throw new Error('Invalid switch or port')
-      const sw = switches.value.find(s => s.id === switchConnection.switchId)
-      console.log('Switch:', sw)
-      const port = sw.ports.find(
-        p => sw.num_row * p.phy_col + p.phy_row + 1 === Number(switchConnection.switchPort)
-      )
-      if (!port) throw new Error('Port not found')
-      await fetch('/api/link/switch_port/interface/connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          switch_port_id: port.id,
-          interface_id: selectedInterfaceId.value
-        })
-      })
-      ElMessage.success('Connected to Switch')
-    }
-    showModal.value = false
-    location.reload()
-  } catch (e) {
-    ElMessage.error(e.message || 'Failed to save connection')
-  }
+      const sw = switches.value.find(s => s.id === switchConnection.switchId && s.name === switchConnection.switchName)
+      const number = Number(switchConnection.switchPort)
+      const port = Number.isInteger(number) && number > 0 && sw?.ports?.find(p => sw.num_row * p.phy_col + p.phy_row + 1 === number)
+      if (!port) return ElMessage.warning('Select a valid switch and port from the suggestions.')
+      url = '/api/link/switch_port/interface/connect'
+      body = { switch_port_id: port.id, interface_id: selectedInterfaceId.value }
+    } else return
+    await post(url, body)
+    if (server.id === id) showModal.value = false
+    ElMessage.success('Connection updated')
+    await loadServer(id)
+  } catch (error) { reportError(error) }
+  finally { saving.value = false }
 }
-
-function saveIPMI() { fetch('/api/server/ipmi', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ server_id: route.params.id, ipmi: server.ipmi }) }).then(() => ElMessage.success('IPMI info saved')) }
-
-function submitApplication() {}
-
-function logout() { router.push({ name: 'Login' }) }
-function gotoHome() { router.push({ name: 'Summary' }) }
-function gotoProfile(id) { router.push({ name: 'Profile', params: { id } }) }
+async function saveIPMI() {
+  if (!currentUser.value.is_admin || savingIPMI.value || !server.id) return
+  savingIPMI.value = true
+  try { await post('/api/server/ipmi', { server_id: server.id, ipmi: server.ipmi }); ElMessage.success('IPMI info saved') }
+  finally { savingIPMI.value = false }
+}
 </script>
 
 <style scoped>

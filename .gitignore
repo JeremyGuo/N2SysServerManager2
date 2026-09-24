@@ -7,3 +7,42 @@ logs/
 .nfs*
 ssh
 old_*
+.venv/
+.env
+.env.*
+!.env.example
+.pytest_cache/
+dist/
+
+# Local exports and production inventory (never commit real hosts/topology).
+_old_data_*.json
+old_*_data.json
+*data_export*.json
+# SQLite databases, online backups, journals and snapshots.
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db-*
+*.db.*
+*.backup
+*.backup_*
+*.bak
+*.bak_*
+*.orig
+backups/
+# SSH/TLS credentials, not source code or test public-key vectors.
+.ssh/
+id_rsa*
+id_ed25519*
+id_ecdsa*
+id_dsa*
+*.key
+*.pem
+*.p12
+*.pfx
+# Local validation/browser artifacts.
+.smoke-vite.config.mjs
+playwright-report/
+test-results/
+.DS_Store

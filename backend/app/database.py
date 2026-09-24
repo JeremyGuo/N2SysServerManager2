@@ -1,9 +1,8 @@
 import os
-from sqlalchemy import create_engine, ForeignKey, event, DDL
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Mapped, mapped_column, relationship
+from sqlalchemy import create_engine, ForeignKey, event, DDL, JSON, UniqueConstraint
+from sqlalchemy.orm import declarative_base, sessionmaker, Mapped, mapped_column, relationship
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from enum import Enum
 
@@ -12,10 +11,18 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL is None:
     raise ValueError("DATABASE_URL environment variable is not set")
 
-# SQLite specific check_same_thread argument
+# SQLite-only options must not be passed to PostgreSQL drivers.
 engine = create_engine(
-    DATABASE_URL, connect_args={"check_same_thread": False}, pool_size=20, max_overflow=0
+    DATABASE_URL,
+    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite:") else {},
+    pool_pre_ping=True,
 )
+if engine.dialect.name == "sqlite":
+    @event.listens_for(engine, "connect")
+    def enable_foreign_keys(dbapi_connection, _):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -201,7 +208,7 @@ event.listen(
           DELETE FROM connection WHERE id = OLD.conn_id;
         END;
         """
-    ),
+    ).execute_if(dialect="sqlite"),
 )
 
 # Trigger: when a SwitchPort is deleted, delete its Connection
@@ -218,5 +225,39 @@ event.listen(
           DELETE FROM connection WHERE id = OLD.conn_id;
         END;
         """
-    ),
+    ).execute_if(dialect="sqlite"),
 )
+
+
+# Additive tables: existing server/account/application tables are not rewritten.
+class ServerHardware(Base):
+    __tablename__ = 'server_hardware'
+    server_id: Mapped[int] = mapped_column(ForeignKey('server.id', ondelete='CASCADE'), primary_key=True)
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class DeviceUsage(Base):
+    __tablename__ = 'device_usage'
+    __table_args__ = (UniqueConstraint('user_id', 'server_id', name='uq_device_usage_user_server'),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey('user.id', ondelete='CASCADE'), index=True)
+    server_id: Mapped[int] = mapped_column(ForeignKey('server.id', ondelete='CASCADE'), index=True)
+    application_id: Mapped[Optional[int]] = mapped_column(ForeignKey('application.id', ondelete='SET NULL'), nullable=True)
+    # pending | active | ended | rejected | cancelled; latest registration per user/server.
+    status: Mapped[str] = mapped_column(default='pending')
+    reason: Mapped[str] = mapped_column(default='')
+    # New tables use UTC-naive storage, API explicitly emits Z (not legacy local dates).
+    requested_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
+    started_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    ended_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    user: Mapped['User'] = relationship()
+    server: Mapped['Server'] = relationship()
+
+
+class ApplicationPurpose(Base):
+    """Additive metadata for requests which must not interrupt active usage."""
+    __tablename__ = 'application_purpose'
+    application_id: Mapped[int] = mapped_column(ForeignKey('application.id', ondelete='CASCADE'), primary_key=True)
+    kind: Mapped[str] = mapped_column(default='sudo')
+    reason: Mapped[str] = mapped_column(default='')

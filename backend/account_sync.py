@@ -1,389 +1,618 @@
+"""Background reconciliation with explicit task/resource ownership.
+
+SSH verifies known_hosts by default. SSH_KNOWN_HOSTS selects a file; only the
+explicit SSH_INSECURE_SKIP_HOST_KEY_CHECK=true setting disables verification.
+"""
 import asyncio
-from app.database import Account, SessionLocal, AccountStatus, Server, User, UserStatus, ServerStatus, ServerInterface
-from logger import logger
-from sqlalchemy.orm import make_transient
-from account_helpers import *
-from server_helpers import *
-import asyncssh
-import copy
-from contextlib import asynccontextmanager
+from collections import OrderedDict
+from contextlib import asynccontextmanager, contextmanager
 import datetime
-# async semaphore to limit the number of concurrent tasks
+import os
+import threading
+import time
+from types import SimpleNamespace
+
+import asyncssh
+from sync_errors import SyncCommandError
+from gateway_keys import GatewayKeyError, sshGatewayPublicKey, append_gateway_public_key
+from activity_time import ActivityTimeError, as_utc, to_db_time, utc_now, validate_activity
+from app.database import Account, SessionLocal, AccountStatus, Server, User, UserStatus, ServerStatus, ServerInterface, DeviceUsage
+from logger import logger
+from app.hardware_store import save_hardware, failed_snapshot
+from hardware_helpers import collect_hardware
+from usage_service import end_account_usage, lock_usage_user
+from account_helpers import (
+    validate_account_name, sshAccountIsExists, sshAccountCreate, sshAccountInitializePassword,
+    sshAccountGetAuthorizedKeys, sshAccountEnable, sshAccountDisable,
+    sshAccountSudo, sshAccountUnsudo,
+)
+from server_helpers import (
+    sshServerGetKernel, sshServerGetRelease, sshServerGetNICs,
+    sshServerGetIBNICs, sshServerGetAccountLoginDate,
+)
 
 concurrent_tasks = 20
 semaphore = asyncio.Semaphore(concurrent_tasks)
-
 syncing_accounts = {}
 last_server_collect_date = {}
 last_server_collecting = {}
+# Only fresh, successful observations can authorize automatic inactivity revocation.
+# Empty after restart so stale DB values are never used before SSH collection.
+_account_activity_checks = {}
 start_watcher = False
+_watcher_task = None
+_sync_tasks = set()
+_worker_tasks = {}
+_state_lock = threading.RLock()
+_refresh_requested = set()
+_sync_errors = OrderedDict()
+MAX_SYNC_ERRORS = 200
+WATCH_INTERVAL = 30
+# Monotonic deadlines: successful public-key observations recheck every 4h;
+# failures are retained for a bounded 5-minute backoff (not every watcher tick).
+GATEWAY_KEY_RECHECK_SECONDS = 4 * 60 * 60
+GATEWAY_KEY_RETRY_SECONDS = 5 * 60
+_gateway_key_next_check = {}
+
+
+def get_sync_errors():
+    """Return copies of latest failures, oldest first; never raw SSH/DB text."""
+    with _state_lock:
+        return [dict(error) for error in _sync_errors.values()]
+
+
+def _record_error(scope, identifier, operation, error=None):
+    # Use only controlled text. Regex redaction of arbitrary exception strings
+    # cannot reliably remove passwords, public keys, or SQL bound parameters.
+    kind = type(error).__name__ if error is not None else ""
+    if kind not in {"TimeoutError", "ConnectionError", "ValueError", "RuntimeError",
+                    "PermissionDenied", "HostKeyNotVerifiable", "OSError",
+                    "OperationalError", "IntegrityError", "CancelledError"}:
+        kind = "Error" if error is not None else ""
+    hints = {
+        "TimeoutError": "连接或远端命令超时，请检查主机地址、端口、网络及服务器负载。",
+        "PermissionDenied": "SSH 认证被拒绝，请检查服务账号、私钥和目标 authorized_keys。",
+        "HostKeyNotVerifiable": "SSH 主机密钥未受信任或已变化；请核对指纹并更新后端 known_hosts。",
+        "OSError": "无法访问目标主机，请检查 DNS、网络、端口和 SSH 服务。",
+        "OperationalError": "数据库连接失败或正忙，请检查数据库服务和磁盘。",
+        "IntegrityError": "数据库关联约束冲突，请检查账号与设备记录。",
+        "ValueError": "账号名称或远端采集数据格式不符合预期，请检查登记信息与系统工具版本。",
+    }
+    reason = error.safe_message if isinstance(error, (SyncCommandError, ActivityTimeError, GatewayKeyError)) else hints.get(kind, "")
+    if scope == "gateway-key" and error is not None and not reason:
+        reason = "请检查数据库服务、目标账号、SSH 网络及非交互 sudo 配置；网关公钥同步将在 5 分钟后重试。"
+    message = operation + (f" ({kind})" if kind else "") + (f"：{reason}" if reason else "")
+    identifier = identifier if isinstance(identifier, int) else None
+    with _state_lock:
+        key = (scope, identifier)
+        _sync_errors.pop(key, None)
+        _sync_errors[key] = {
+            "scope": scope, "id": identifier, "message": message,
+            "occurred_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        }
+        while len(_sync_errors) > MAX_SYNC_ERRORS:
+            _sync_errors.popitem(last=False)
+    logger.error("%s %s: %s", scope, identifier, message)
+
+
+def _clear_error(scope, identifier):
+    with _state_lock:
+        _sync_errors.pop((scope, identifier), None)
+
+
+def request_server_refresh(server_id):
+    """Synchronous, non-blocking API hook; force real collection next cycle.
+
+    A refresh requested during an in-flight collection is retained for another
+    collection, rather than overwritten by that task's completion timestamp.
+    """
+    with _state_lock:
+        last_server_collect_date.pop(server_id, None)
+        _refresh_requested.add(server_id)
+
+
+@contextmanager
+def _session():
+    db = SessionLocal()
+    try:
+        yield db
+    except BaseException:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def _snapshot(row, *fields):
+    return SimpleNamespace(**{field: getattr(row, field) for field in fields})
+
+
+def _task_finished(task, scope, identifier):
+    _sync_tasks.discard(task)
+    key = (scope, identifier)
+    if _worker_tasks.get(key) is task:
+        _worker_tasks.pop(key, None)
+        if scope == "account":
+            syncing_accounts.pop(identifier, None)
+        elif scope == "server":
+            last_server_collecting.pop(identifier, None)
+    if task.cancelled():
+        return
+    error = task.exception()  # Retrieve every exception, including watcher exit.
+    if error is not None:
+        _record_error(scope, identifier, "Background task failed", error)
+
+
+def _spawn(coroutine, scope, identifier):
+    task = asyncio.create_task(coroutine)
+    _sync_tasks.add(task)
+    _worker_tasks[(scope, identifier)] = task
+    task.add_done_callback(lambda done: _task_finished(done, scope, identifier))
+    return task
+
 
 def startWatcher():
-    global start_watcher
+    """Idempotently start and retain the watcher task on the running loop."""
+    global start_watcher, _watcher_task
+    if _watcher_task is not None and not _watcher_task.done():
+        return _watcher_task
     start_watcher = True
-    loop = asyncio.get_event_loop()
-    loop.create_task(watchAccountSync())
+    _watcher_task = asyncio.get_running_loop().create_task(watchAccountSync())
+    _watcher_task.add_done_callback(lambda task: _task_finished(task, "watcher", None))
+    return _watcher_task
+
 
 async def stopWatcher():
-    global start_watcher
+    """Stop scheduling, then await all work (including SSH close/DB cleanup)."""
+    global start_watcher, _watcher_task
     start_watcher = False
-    waiting_ticks = 0
-    while True:
-        logger.info(f"Waiting for tasks to finish. Waiting {waiting_ticks} seconds.")
-        waiting_ticks += 1
-        finished = True
-        for account_id in syncing_accounts:
-            if syncing_accounts[account_id]:
-                finished = False
-        for server_id in last_server_collecting:
-            if last_server_collecting[server_id]:
-                finished = False
-        if finished:
-            break
-        await asyncio.sleep(1)
-    logger.info("All tasks finished. Stopping watcher.")
+    watcher = _watcher_task
+    if watcher is not None:
+        watcher.cancel()
+        await asyncio.gather(watcher, return_exceptions=True)
+    # Keep strong references until awaited. Do not cancel workers: an account
+    # may be half-configured remotely; commands have bounded SSH timeouts.
+    while _sync_tasks:
+        await asyncio.gather(*tuple(_sync_tasks), return_exceptions=True)
+    if _watcher_task is watcher:
+        _watcher_task = None
+    logger.info("All sync tasks finished. Watcher stopped.")
+
+
+def _known_hosts_options():
+    if os.getenv("SSH_INSECURE_SKIP_HOST_KEY_CHECK", "").lower() == "true":
+        return {"known_hosts": None}
+    path = os.getenv("SSH_KNOWN_HOSTS")
+    return {"known_hosts": os.path.expanduser(path)} if path else {}
+
 
 @asynccontextmanager
 async def getConnection(srv: Server):
-    db = SessionLocal()
-    try:
+    # Resolve relationships while attached, but release DB before awaiting SSH.
+    with _session() as db:
         server = db.query(Server).filter(Server.id == srv.id).first()
-        if not server:
-            raise Exception(f"Server {server.id} not found in database while getting connection.")
-        if not server.proxy_server:
-            host = server.host
-            port = server.port
-            db.close()
-            logger.info(f"Connecting to server {host}:{port} directly.")
-            conn = await asyncio.wait_for(asyncssh.connect(host=host, port=port, known_hosts=None), timeout=3) # TODO: add known_hosts
-            yield conn
-            conn.close()
-        else:
-            logger.info(f"Connecting to server {server.host}:{server.port} through proxy {server.proxy_server.host}:{server.proxy_server.port}")
-            # generate ssh config
-            ssh_config_path = './ssh/'
-            ssh_config_file = f"{ssh_config_path}ssh_config_{server.id}"
-            # mkdir if not exists
-            import os
-            if not os.path.exists(ssh_config_path):
-                os.makedirs(ssh_config_path)
-            with open(ssh_config_file, 'w') as f:
-                f.write(f"Host {server.proxy_server.host}\n")
-                f.write(f"    HostName {server.proxy_server.host}\n")
-                f.write(f"    Port {server.proxy_server.port}\n")
-                f.write(f"\n")
-                f.write(f"Host {server.host}\n")
-                f.write(f"    HostName {server.host}\n")
-                f.write(f"    Port {server.port}\n")
-                f.write(f"    ProxyJump {server.proxy_server.host}:{server.proxy_server.port}\n")
-            default_config_path = os.path.expanduser("~/.ssh/config")
-            host = server.host
-            port = server.port
-            db.close()
-            conn = await asyncio.wait_for(
-                asyncssh.connect(
-                    host=host,
-                    port=port,
-                    known_hosts=None,
-                    config=[default_config_path, ssh_config_file]
-                ),
-                timeout=6
-            )
-            yield conn
-            conn.close()
-    except Exception as e:
-        logger.error(f"Error connecting to server {srv.host}: {e}")
-        raise e
+        if server is None:
+            raise RuntimeError("Server no longer exists")
+        host, port = server.host, server.port
+        proxy = server.proxy_server
+        proxy_address = (proxy.host, proxy.port) if proxy is not None else None
+    conn = None
+    tunnel = None
+    options = _known_hosts_options()
+    try:
+        if proxy_address:
+            # An explicit SSH connection verifies the jump host as well and
+            # avoids generating SSH config files from untrusted host strings.
+            tunnel = await asyncio.wait_for(asyncssh.connect(
+                host=proxy_address[0], port=proxy_address[1], **options), timeout=6)
+        kwargs = dict(options)
+        if tunnel is not None:
+            kwargs["tunnel"] = tunnel
+        conn = await asyncio.wait_for(asyncssh.connect(host=host, port=port, **kwargs), timeout=6)
+        yield conn
+    finally:
+        # Close both even when a command, cancellation, or close itself fails.
+        try:
+            if conn is not None:
+                try:
+                    conn.close()
+                finally:
+                    await conn.wait_closed()
+        finally:
+            if tunnel is not None:
+                try:
+                    tunnel.close()
+                finally:
+                    await tunnel.wait_closed()
+
 
 async def doSyncAccount(user: User, server: Server, account: Account):
+    validate_account_name(user.account_name)
     async with semaphore:
-        logger.info(f"Connecting to server {server.host}")
         async with getConnection(server) as conn:
-            logger.info(f"Connected to server {server.host}")
-            # Step 1 - Check if the account exists if not create it
-            if not await sshAccountIsExists(conn, user.account_name):
-                logger.info(f"Account {user.account_name} does not exist. Creating it.")
-                result, err = await sshAccountCreate(conn, user.account_name)
-                if not result:
-                    raise Exception(f"Error creating account {user.account_name} on {server.host}: {err}")
-            else:
-                logger.info(f"Account {user.account_name} already exists. Skipping creation.")
-            # Step 2 - Make the account the same loginable as the account
-            if account.is_login_able:
-                old_authorized_keys = await sshAccountGetAuthorizedKeys(conn, user.account_name)
-                new_authorized_keys = user.public_key.split("\n")
-                # Merge the keys
-                final_keys = old_authorized_keys.split("\n")
-                for key in new_authorized_keys:
-                    if key not in final_keys:
-                        final_keys.append(key)
-                final_keys = [key for key in final_keys if key.strip() != ""]
-                logger.info(f"Enabling account {user.account_name} on {server.host} with {len(final_keys)} keys.")
-                final_keys = "\n".join(final_keys)
-                result, err = await sshAccountEnable(conn, user.account_name, final_keys)
-                if not result:
-                    raise Exception(f"Error enabling account {user.account_name} on {server.host}: {err}")
-            else:
-                result, err = await sshAccountDisable(conn, user.account_name)
-                if not result:
-                    raise Exception(f"Error disabling account {user.account_name} on {server.host}: {err}")
+            exists = await sshAccountIsExists(conn, user.account_name)
+            if not account.is_login_able:
+                # Never create a missing account solely to revoke it.
+                if exists:
+                    success, _ = await sshAccountDisable(conn, user.account_name)
+                    if not success:
+                        raise RuntimeError("Account revocation failed")
                 return
-            # Step 3 - Make the account sudoable if needed
-            if account.is_sudo:
-                result, err = await sshAccountSudo(conn, user.account_name)
-                if not result:
-                    raise Exception(f"Error making account {user.account_name} sudoable on {server.host}: {err}")
-            elif await sshAccountIsSudo(conn, user.account_name):
-                result, err = await sshAccountUnsudo(conn, user.account_name)
-                if not result:
-                    raise Exception(f"Error making account {user.account_name} no sudo on {server.host}: {err}")
+            if not exists:
+                success, _ = await sshAccountCreate(conn, user.account_name)
+                if not success:
+                    raise RuntimeError("Account creation failed")
             else:
-                logger.info(f"Account {user.account_name} is not sudoable on {server.host}. Skipping.")
+                # A useradd can succeed before password initialization fails.
+                # Recover ONLY a root-marked creation owned by this platform;
+                # unrelated/completed existing accounts are never reset.
+                success, _ = await sshAccountInitializePassword(conn, user.account_name)
+                if not success:
+                    raise RuntimeError("Pending account initialization failed")
+            old_keys = await sshAccountGetAuthorizedKeys(conn, user.account_name)
+            # Preserve existing keys: production accounts may use keys which
+            # were installed independently of this service.
+            keys = list(dict.fromkeys(key for key in (old_keys + "\n" + (user.public_key or "")).splitlines() if key.strip()))
+            success, _ = await sshAccountEnable(conn, user.account_name, "\n".join(keys))
+            if not success:
+                raise RuntimeError("Account enable failed")
+            operation = sshAccountSudo if account.is_sudo else sshAccountUnsudo
+            success, _ = await operation(conn, user.account_name)
+            if not success:
+                raise RuntimeError("Account sudo update failed")
 
-async def syncAccount(user : User, server : Server, account: Account):
-    if not account.id:
-        logger.fatal(f"Account {account.id} not found in database, this will cause a crash.")
-        import os
-        os._exit(1)
+
+async def syncAccount(user: User, server: Server, account: Account):
+    success = False
+    identifier = account.id
     try:
-        logger.info(f"Syncing account {account.id} for user {user.username} on server {server.host}")
-        success = False
+        if not identifier:
+            raise ValueError("Missing account id")
+        await doSyncAccount(user, server, account)
+        success = True
+    except asyncio.CancelledError as error:
+        _record_error("account", identifier, "Account synchronization interrupted", error)
+        raise
+    except Exception as error:
+        _record_error("account", identifier, "Account synchronization failed", error)
+    finally:
         try:
-            await doSyncAccount(user, server, account)
-            success = True
-        except Exception as e:
-            logger.error(f"Error syncing account {account.id}: {e}")
-        logger.info(f"Finished syncing account {account.id} for user {user.username} on server {server.host}")
-        
-        db = SessionLocal()
-        account_db = db.query(Account).filter(Account.id == account.id).first()
-        if not account_db:
-            logger.error(f"Account {account.id} not found in database.")
-        elif account_db.status == AccountStatus.DIRTY:
-            logger.warning(f"Account {account.id} is dirty during updating.")
-        else:
-            account_db.status = AccountStatus.ACTIVE if success else AccountStatus.DIRTY
+            with _session() as db:
+                row = db.query(Account).filter(Account.id == identifier).first()
+                if row is None:
+                    raise RuntimeError("Account no longer exists")
+                # Preserve a concurrent edit's DIRTY marker, not stale success.
+                if row.status != AccountStatus.DIRTY:
+                    row.status = AccountStatus.ACTIVE if success else AccountStatus.DIRTY
+                db.commit()
+            if success:
+                _clear_error("account", identifier)
+        except Exception as error:
+            _record_error("account", identifier, "Account status persistence failed", error)
+        finally:
+            syncing_accounts.pop(identifier, None)
+
+
+def _set_server_status(identifier, status):
+    with _session() as db:
+        row = db.query(Server).filter(Server.id == identifier).first()
+        if row is None:
+            raise RuntimeError("Server no longer exists")
+        row.server_status = status
         db.commit()
-        db.close()
-    except Exception as e:
-        logger.error(f"Error processing clear transactions account {account.id}: {e}")
-    syncing_accounts[account.id] = False
+
+
+async def _collect_hardware(conn, server):
+    # Optional tools/driver failures stay local to each category, not fatal to
+    # OS/interface/login-history collection or to other hardware categories.
+    try:
+        snapshot = await collect_hardware(conn)
+    except Exception:
+        snapshot = failed_snapshot("硬件采集发生内部错误，请管理员检查采集器及系统工具。")
+    with _session() as db:
+        if not db.get(Server, server.id):
+            raise RuntimeError("Server no longer exists")
+        save_hardware(db, server.id, snapshot)
+        db.commit()
+    failures = [f"{name}: {item.get('error') or '无法完整采集'}" for name, item in snapshot.items()
+                if item.get("status") != "ok" or item.get("error")]
+    if failures:
+        # Collector errors are controlled text, never raw command/stderr.
+        _record_error("hardware", server.id, "；".join(failures))
+    else:
+        _clear_error("hardware", server.id)
+
+
+async def _collect_server(conn, server):
+    # Collect before opening a transaction; no DB session spans SSH awaits.
+    kernel = await sshServerGetKernel(conn)
+    release = await sshServerGetRelease(conn)
+    nics = await sshServerGetNICs(conn)
+    ib_nics = await sshServerGetIBNICs(conn)
+    with _session() as db:
+        row = db.query(Server).filter(Server.id == server.id).first()
+        if row is None:
+            raise RuntimeError("Server no longer exists")
+        row.kernel_version, row.os_version = kernel, release
+        for nic in nics + ib_nics:
+            interface = db.query(ServerInterface).filter(
+                ServerInterface.server_id == server.id,
+                ServerInterface.pci_address == nic["pci_address"],
+            ).first()
+            if interface is None:
+                interface = ServerInterface(server_id=server.id, pci_address=nic["pci_address"])
+                db.add(interface)
+            interface.interface = nic["interface_name"] or "No Name"
+            interface.manufacturer = nic["nic_name"]
+            db.flush()
+        accounts = [
+            (account.id, account.user.account_name if account.user else None)
+            for account in db.query(Account).filter(
+                Account.server_id == server.id, Account.is_login_able == True).all()
+        ]
+        db.commit()
+    failed = False
+    for identifier, name in accounts:
+        _account_activity_checks.pop(identifier, None)
+        try:
+            status, login_date = await sshServerGetAccountLoginDate(conn, name)
+            if not status:
+                raise RuntimeError("Login history command failed")
+            # None means no available wtmp record, not 1970 or today's midnight.
+            # Keep the existing/grace value, but do not auto-revoke on absent evidence.
+            if login_date is None:
+                continue
+            date = validate_activity(login_date)
+            with _session() as db:
+                row = db.query(Account).filter(Account.id == identifier).first()
+                if row is None:
+                    raise RuntimeError("Account no longer exists")
+                if row.last_login_date is not None and as_utc(row.last_login_date) > utc_now() + datetime.timedelta(minutes=5):
+                    raise ActivityTimeError("数据库中的历史活动时间超前，请管理员核对旧时间记录与平台时区；不会自动覆盖或据此回收账号。")
+                if row.last_login_date is None or as_utc(row.last_login_date) < date:
+                    row.last_login_date = to_db_time(date)
+                db.commit()
+                _account_activity_checks[identifier] = (utc_now(), row.last_login_date)
+        except Exception as error:
+            failed = True
+            _record_error("server", server.id, "Account login history collection failed", error)
+    return not failed
+
 
 async def syncServer(server: Server):
+    identifier = server.id
+    connected = False
+    with _state_lock:
+        _refresh_requested.discard(identifier)
+        # A failed collection must remain due even if called explicitly before
+        # the previous successful collection's normal hourly deadline.
+        last_server_collect_date.pop(identifier, None)
     try:
-        if not server.id:
-            logger.fatal(f"Server {server.id} not found in database, this will cause a crash.")
-            import os
-            os._exit(1)
+        if not identifier:
+            raise ValueError("Missing server id")
+        # A failed current collection invalidates older successful checks too.
+        with _session() as db:
+            for (account_id,) in db.query(Account.id).filter(Account.server_id == identifier).all():
+                _account_activity_checks.pop(account_id, None)
         async with semaphore:
             async with getConnection(server) as conn:
-                try:
-                    db = SessionLocal()
-                    server_db = db.query(Server).filter(Server.id == server.id).first()
-                    if not server_db:
-                        logger.error(f"Server {server.id} not found in database.")
-                        return
-                    server_db.server_status = ServerStatus.ACTIVE
-                    last_server_collect_date[server.id] = datetime.datetime.now()
-                    db.commit()
-                    db.close()
-
-                    # Step 1 - Get the kernel version
-                    kernel_version = await sshServerGetKernel(conn)
-                    logger.info(f"Collecting kernel version from server {server.host} {kernel_version}")
-                    db = SessionLocal()
-                    server_db = db.query(Server).filter(Server.id == server.id).first()
-                    if not server_db:
-                        logger.error(f"Server {server.id} not found in database.")
-                        return
-                    server_db.kernel_version = kernel_version
-                    db.commit()
-                    db.close()
-
-                    # Step 2 - Get the release version
-                    os_version = await sshServerGetRelease(conn)
-                    logger.info(f"Collecting release version from server {server.host} {os_version}")   
-                    db = SessionLocal() 
-                    server_db = db.query(Server).filter(Server.id == server.id).first()
-                    if not server_db:
-                        logger.error(f"Server {server.id} not found in database.")
-                        return
-                    server_db.os_version = os_version
-                    db.commit()
-                    db.close()
-
-                    # Step 3 - Get the NICs
-                    nics = await sshServerGetNICs(conn)
-                    ib_nics = await sshServerGetIBNICs(conn)
-                    logger.info(f"Collecting NICs from server {server.host} {nics}")
-                    logger.info(f"Collecting IB NICs from server {server.host} {ib_nics}")
-                    db = SessionLocal()
-                    server_db = db.query(Server).filter(Server.id == server.id).first()
-                    for nic in nics:
-                        old_interface = db.query(ServerInterface).filter(
-                            ServerInterface.server_id == server.id,
-                            ServerInterface.pci_address == nic["pci_address"]
-                        ).first()
-                        if old_interface:
-                            old_interface.interface = nic["interface_name"] if nic["interface_name"] else "No Name Eth"
-                            old_interface.manufacturer = nic["nic_name"]
-                        else:
-                            new_interface = ServerInterface(
-                                pci_address=nic["pci_address"],
-                                interface=nic["interface_name"] if nic["interface_name"] else "No Name Eth",
-                                manufacturer=nic["nic_name"],
-                                server_id=server.id
-                            )
-                            db.add(new_interface)
+                connected = True
+                await _collect_hardware(conn, server)
+                if not await _collect_server(conn, server):
+                    _set_server_status(identifier, ServerStatus.NO_PERMISSION)
+                    return  # Inner failures remain visible and immediately due.
+            _set_server_status(identifier, ServerStatus.ACTIVE)
+        with _state_lock:
+            if identifier not in _refresh_requested:
+                last_server_collect_date[identifier] = datetime.datetime.now()
+        _clear_error("server", identifier)
+    except asyncio.CancelledError as error:
+        _record_error("server", identifier, "Server collection interrupted", error)
+        raise
+    except Exception as error:
+        _record_error("server", identifier, "Server data collection failed" if connected else "SSH connection failed", error)
+        if not connected and identifier:
+            try:
+                with _session() as db:
+                    if db.get(Server, identifier):
+                        save_hardware(db, identifier, failed_snapshot("SSH 连接失败，硬件未更新；旧值如有保留，不代表当前状态。"))
                         db.commit()
-                    for ib_nic in ib_nics:
-                        old_interface = db.query(ServerInterface).filter(
-                            ServerInterface.server_id == server.id,
-                            ServerInterface.pci_address == ib_nic["pci_address"]
-                        ).first()
-                        if old_interface:
-                            old_interface.interface = ib_nic["interface_name"] if ib_nic["interface_name"] else "No Name IB"
-                            old_interface.manufacturer = ib_nic["nic_name"]
-                        else:
-                            new_interface = ServerInterface(
-                                pci_address=ib_nic["pci_address"],
-                                interface=ib_nic["interface_name"] if ib_nic["interface_name"] else "No Name IB",
-                                manufacturer=ib_nic["nic_name"],
-                                server_id=server.id
-                            )
-                            db.add(new_interface)
-                        db.commit()
-                    db.close()
-
-                    # Step 4 - Get the account login history
-                    db = SessionLocal()
-                    accounts = db.query(Account).filter(Account.server_id == server.id, Account.is_login_able == True).all()
-                    for account in accounts:
-                        db.refresh(account); db.expunge(account); make_transient(account)
-                    db.close()
-                    for account in accounts:
-                        db = SessionLocal()
-                        try:
-                            user = db.query(User).filter(User.id == account.user_id).first()
-                            if not user:
-                                db.close()
-                                raise Exception(f"User {account.user_id} not found in database.")
-                            account_name =  user.account_name
-                            db.close()
-                            status, login_date = await sshServerGetAccountLoginDate(conn, account_name)
-                            if not status:
-                                logger.error(f"Error collecting login date from server {server.host} for account {account_name}: {login_date}")
-                                continue
-                            # convert from +%Y-%m-%d %H:%M:%S to datetime
-                            logger.info(f"Collecting login date from server {server.host} for account {account_name} {login_date}")
-                            date = datetime.datetime.strptime(login_date, "%Y-%m-%d %H:%M:%S")
-                            db = SessionLocal()
-                            account_db = db.query(Account).filter(Account.id == account.id).first()
-                            if not account_db:
-                                db.close()
-                                raise Exception(f"Account {account.id} not found in database.")
-                            # update if date is newer
-                            if account_db.last_login_date < date:
-                                account_db.last_login_date = date
-                                db.commit()
-                            db.close()
-                        except Exception as e:
-                            logger.error(f"Error collecting login history for account {account.id} on server {server.host}: {str(e)}")
-                            continue
-                except Exception as e:
-                    logger.error(f"Error collecting data from server {server.host}: {e}")
-                    server.server_status = ServerStatus.NO_PERMISSION
-    except Exception as e:
-        logger.error(f"Error collecting data from server {server.host}: {e}")
-        server.server_status = ServerStatus.UNABLE_TO_REACH
+            except Exception as snapshot_error:
+                _record_error("hardware", identifier, "硬件采集失败状态无法保存", snapshot_error)
+        try:
+            _set_server_status(identifier, ServerStatus.NO_PERMISSION if connected else ServerStatus.UNABLE_TO_REACH)
+        except Exception as status_error:
+            _record_error("server", identifier, "Server status persistence failed", status_error)
     finally:
-        last_server_collecting[server.id] = False
+        last_server_collecting.pop(identifier, None)
+
+
+def gateway_key_sync_enabled():
+    """Optional gate; cannot override the global SYNC_ENABLED watcher switch."""
+    return (os.getenv("SYNC_ENABLED", "true").lower() == "true"
+            and os.getenv("GATEWAY_KEY_SYNC_ENABLED", "true").lower() == "true")
+
+
+def _gateway_accounts(db, *, provisioned=True):
+    query = db.query(Account).join(User).join(Server, Account.server_id == Server.id).filter(
+        User.status == UserStatus.ACTIVE, Account.is_login_able.is_(True), Server.is_gateway.is_(True))
+    if provisioned:
+        query = query.filter(Account.status == AccountStatus.ACTIVE)
+    return query
+
+
+def _gateway_key_target(identifier):
+    # Fresh authorization after any semaphore wait. No attached ORM objects or
+    # transactions escape this function into network operations.
+    with _session() as db:
+        account = _gateway_accounts(db).filter(Account.id == identifier).first()
+        if account is None:
+            return None
+        validate_account_name(account.user.account_name)
+        return SimpleNamespace(id=account.id, user_id=account.user_id,
+                               server_id=account.server_id, account_name=account.user.account_name)
+
+
+def _persist_gateway_public_key(target, public_key):
+    with _session() as db:
+        # Serialize append/merge with per-user permission writers; SQLite needs a
+        # write lock too. Re-read desired state and keys AFTER acquiring it.
+        if db.query(User.id).filter(User.id == target.user_id).first() is None:
+            return False
+        user = lock_usage_user(db, target.user_id, require_active=False)
+        account = _gateway_accounts(db, provisioned=False).filter(
+            Account.id == target.id, Account.user_id == target.user_id,
+            Account.server_id == target.server_id).populate_existing().first()
+        if account is None or user.account_name != target.account_name:
+            return False
+        merged, changed = append_gateway_public_key(user.public_key, public_key)
+        if changed:
+            user.public_key = merged
+            # Include UPDATING: in-flight sync's stale success must preserve a
+            # future reconciliation with the newly appended key.
+            db.query(Account).filter(Account.user_id == user.id, Account.is_login_able.is_(True)).update(
+                {Account.status: AccountStatus.DIRTY}, synchronize_session=False)
+        db.commit()
+        return True
+
+
+async def syncGatewayKey(identifier):
+    """Public-only gateway worker; use _spawn(..., 'gateway-key', account.id)."""
+    delay = GATEWAY_KEY_RETRY_SECONDS
+    try:
+        if not gateway_key_sync_enabled():
+            return
+        async with semaphore:
+            target = _gateway_key_target(identifier)
+            if target is None:
+                _clear_error("gateway-key", identifier)
+                return
+            async with getConnection(SimpleNamespace(id=target.server_id)) as conn:
+                # Connection establishment awaits too; reject revocation,
+                # deletion, renaming or reprovisioning which occurred there.
+                if not gateway_key_sync_enabled() or _gateway_key_target(identifier) != target:
+                    _clear_error("gateway-key", identifier)
+                    return
+                public_key = await sshGatewayPublicKey(conn, target.account_name)
+            if _persist_gateway_public_key(target, public_key):
+                delay = GATEWAY_KEY_RECHECK_SECONDS
+            _clear_error("gateway-key", identifier)
+    except asyncio.CancelledError as error:
+        _record_error("gateway-key", identifier, "Gateway public-key synchronization interrupted", error)
+        raise
+    except Exception as error:
+        _record_error("gateway-key", identifier, "Gateway public-key synchronization failed", error)
+    finally:
+        _gateway_key_next_check[identifier] = time.monotonic() + delay
+
+
+def _schedule_gateway_keys(db):
+    if not gateway_key_sync_enabled():
+        return
+    # Keep retry/recheck state for eligible but currently DIRTY/UPDATING rows;
+    # remove deleted/revoked/inactive/non-gateway rows to avoid unbounded state.
+    eligible = {row.id: row for row in _gateway_accounts(db, provisioned=False).all()}
+    for identifier in tuple(_gateway_key_next_check):
+        if identifier not in eligible and ("gateway-key", identifier) not in _worker_tasks:
+            _gateway_key_next_check.pop(identifier, None)
+            _clear_error("gateway-key", identifier)
+    now = time.monotonic()
+    for identifier, account in eligible.items():
+        if account.status != AccountStatus.ACTIVE or syncing_accounts.get(identifier):
+            continue
+        if ("gateway-key", identifier) in _worker_tasks:
+            continue
+        if now < _gateway_key_next_check.get(identifier, 0):
+            continue
+        _spawn(syncGatewayKey(identifier), "gateway-key", identifier)
+
+
+def _watch_cycle():
+    active = [str(identifier) for identifier, running in syncing_accounts.items() if running]
+    if active:
+        logger.info("Dump syncing accounts: %s", ",".join(active))
+    with _session() as db:
+        # Apply desired-state rules before taking worker snapshots, so a user
+        # revoked in this cycle cannot be re-enabled by an older snapshot.
+        gateways = db.query(Server).filter(Server.is_gateway == True).all()
+        active_users = db.query(User).filter(User.status == UserStatus.ACTIVE).all()
+        for gateway in gateways:
+            for user in active_users:
+                account = db.query(Account).filter(Account.user_id == user.id, Account.server_id == gateway.id).first()
+                if account is None:
+                    db.add(Account(user_id=user.id, server_id=gateway.id, is_sudo=user.is_admin,
+                                   is_login_able=True, status=AccountStatus.DIRTY))
+                elif account.is_login_able and account.is_sudo != user.is_admin:
+                    # Preserve explicit revocation rather than undoing it.
+                    account.is_sudo = user.is_admin
+                    account.status = AccountStatus.DIRTY
+        # The per-user loop uses populate_existing(); flush gateway changes
+        # first so its refresh cannot discard provisioning/permission rules.
+        db.flush()
+        now = utc_now()
+        cutoff = now - datetime.timedelta(days=30)
+        # Serialize per-user with apply/confirm/revoke APIs, and re-read after
+        # acquiring the lock. A confirmation racing with this cycle must not be
+        # ignored because a stale snapshot was taken before the lock.
+        for user_id, in db.query(User.id).order_by(User.id).all():
+            target = lock_usage_user(db, user_id, require_active=False)
+            confirmed_servers = {item.server_id for item in db.query(DeviceUsage).filter(
+                DeviceUsage.user_id == user_id, DeviceUsage.status == 'active',
+                DeviceUsage.confirmed_at >= cutoff.replace(tzinfo=None)
+            ).populate_existing().all()}
+            accounts = db.query(Account).filter(Account.user_id == user_id).populate_existing().all()
+            for account in accounts:
+                inactive = target.status == UserStatus.GRADUATED
+                check = _account_activity_checks.get(account.id)
+                fresh = (check is not None and datetime.timedelta(0) <= now - check[0] <= datetime.timedelta(minutes=5)
+                         and check[1] == account.last_login_date)
+                expired = (fresh and not account.server.is_gateway and not target.is_admin
+                           and account.server_id not in confirmed_servers
+                           and account.last_login_date is not None and as_utc(account.last_login_date) < cutoff)
+                if (inactive or expired) and account.is_login_able:
+                    account.is_login_able = False
+                    account.is_sudo = False
+                    account.status = AccountStatus.DIRTY
+                    end_account_usage(db, account.user_id, account.server_id)
+            db.flush()
+        db.commit()
+
+        # Recover UPDATING accounts from a previous process/crashed iteration.
+        accounts = db.query(Account).filter(Account.status.in_([AccountStatus.DIRTY, AccountStatus.UPDATING])).all()
+        for account in accounts:
+            if syncing_accounts.get(account.id):
+                continue
+            identifier = account.id
+            user = _snapshot(account.user, "id", "username", "account_name", "public_key")
+            server = _snapshot(account.server, "id", "host", "port")
+            snapshot = _snapshot(account, "id", "is_login_able", "is_sudo")
+            account.status = AccountStatus.UPDATING
+            db.commit()
+            syncing_accounts[identifier] = True
+            _spawn(syncAccount(user, server, snapshot), "account", identifier)
+
+        # Only provisioned ACTIVE gateway accounts can generate personal keys.
+        # This runs after gateway rules and account worker scheduling above.
+        _schedule_gateway_keys(db)
+
+        for server in db.query(Server).all():
+            with _state_lock:
+                last = last_server_collect_date.get(server.id)
+            if (last is None or last < datetime.datetime.now() - datetime.timedelta(hours=1)) and not last_server_collecting.get(server.id):
+                snapshot = _snapshot(server, "id", "host", "port")
+                last_server_collecting[server.id] = True
+                _spawn(syncServer(snapshot), "server", server.id)
+
 
 async def watchAccountSync():
-    try:
-        while start_watcher:
-            # Routine 1 - Check if there are any accounts to sync
-            dumping_sync_accounts = [syncing_accounts[k] for k in syncing_accounts if syncing_accounts[k]]
-            if len(dumping_sync_accounts) > 0:
-                logger.info("Dump syncing accounts: " + ",".join(dumping_sync_accounts))
-            db = SessionLocal()
-            accounts = db.query(Account).filter(Account.status == AccountStatus.DIRTY).all()
-            for account in accounts:
-                if account.id not in syncing_accounts or not syncing_accounts[account.id]:
-                    syncing_accounts[account.id] = True
-                    account.status = AccountStatus.UPDATING
-                    server = account.server
-                    user = account.user
-                    db.commit()
-                    
-                    db.refresh(account); db.expunge(account); make_transient(account)
-                    db.refresh(server); db.expunge(server); make_transient(server)
-                    db.refresh(user); db.expunge(user); make_transient(user)
-                    
-                    # Start the sync process
-                    asyncio.create_task(syncAccount(user, server, account))
-            
-            gateways = db.query(Server).filter(Server.is_gateway == True).all()
-            # Routine 2 - Admin user should have root permissions on gateway server, all active users should have account on gateway server
-            active_users = db.query(User).filter(User.status == UserStatus.ACTIVE)
-            for gateway in gateways:
-                # Check if the user has an account on the gateway server
-                for user in active_users:
-                    account = db.query(Account).filter(Account.user_id == user.id, Account.server_id == gateway.id).first()
-                    if not account:
-                        # Create the account
-                        new_account = Account(
-                            user_id=user.id,
-                            server_id=gateway.id,
-                            is_sudo=user.is_admin,
-                            is_login_able=True,
-                            status=AccountStatus.DIRTY
-                        )
-                        db.add(new_account)
-                        db.commit()
-                        db.refresh(new_account)
-                        logger.info(f"Automatically created account {new_account.id} for user {user.username} on gateway server {gateway.host}")
-                    elif not account.is_login_able or account.is_sudo != user.is_admin:
-                        # Update the account
-                        account.is_login_able = True
-                        account.is_sudo = user.is_admin
-                        account.status = AccountStatus.DIRTY
-                        db.commit()
-                        logger.info(f"Automatically updated account {account.id} for user {user.username} on gateway server {gateway.host}")
-
-            # Routine 3 - Disable inactive users accounts
-            inactive_users = db.query(User).filter(User.status == UserStatus.GRADUATED)
-            inactive_accounts = db.query(Account).filter(Account.user_id.in_([user.id for user in inactive_users])).all()
-            for account in inactive_accounts:
-                if account.is_login_able:
-                    account.is_login_able = False
-                    account.status = AccountStatus.DIRTY
-                    db.commit()
-                    logger.info(f"Automatically disabled account {account.id} for user {account.user.username} on server {account.server.host}")
-            
-            # Routine 4 - auto revoke account if the user is inactive for a long time
-            accounts = db.query(Account).filter(Account.is_login_able == True).all()
-            for account in accounts:
-                if account.server.is_gateway:
-                    continue
-                if account.user.is_admin:
-                    continue
-                if account.last_login_date < datetime.datetime.now() - datetime.timedelta(days=30):
-                    account.is_login_able = False
-                    account.status = AccountStatus.DIRTY
-                    db.commit()
-                    logger.info(f"Automatically disabled account {account.id} for user {account.user.username} on server {account.server.host}")
-
-            # Routine 5 - collect usage data from the servers
-            servers = db.query(Server).all()
-            for server in servers:
-                if server.id not in last_server_collect_date or last_server_collect_date[server.id] < datetime.datetime.now() - datetime.timedelta(hours=1):
-                    if server.id not in last_server_collecting or not last_server_collecting[server.id]:
-                        last_server_collecting[server.id] = True
-                        db.refresh(server); db.expunge(server); make_transient(server)
-                        asyncio.create_task(syncServer(server))
-
-            db.close()
-            await asyncio.sleep(30)
-    except Exception as e:
-        logger.error(f"Error in watchAccountSync: {e}")
+    while start_watcher:
+        try:
+            _watch_cycle()
+            _clear_error("watcher", None)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            _record_error("watcher", None, "Synchronization loop failed; will retry", error)
+        # Catch per iteration, not outside the loop: a transient DB failure must
+        # not permanently stop reconciliation.
+        await asyncio.sleep(WATCH_INTERVAL)

@@ -36,7 +36,7 @@
         </el-form-item>
       </el-form>
       <div class="footer">
-        <el-button type="primary" class="full-width" @click="register">Sign up</el-button>
+        <el-button type="primary" class="full-width" @click="register" :loading="loading">Sign up</el-button>
         <p>Already have an account? <router-link to="/login">Sign in</router-link></p>
       </div>
     </div>
@@ -44,14 +44,17 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue';
+import { apiFetch, reportError } from '../api.js'
+import { ref, reactive, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 
 const router = useRouter();
 const formRef = ref(null);
+const loading = ref(false);
 const user = reactive({ username: '', account_name: '', realname: '', mail: '', password: '', public_key: '' });
 const confirmPassword = ref('');
+onBeforeUnmount(() => { user.password = ''; confirmPassword.value = '' })
 
 const rules = {
   username: [{ required: true, message: 'Please enter your username', trigger: 'blur' }],
@@ -69,33 +72,19 @@ const rules = {
   ]
 };
 
-function register() {
-  formRef.value.validate(async valid => {
-    if (!valid) {
-      ElMessage.error('Please fill out the form correctly');
-      return;
-    }
-    if (user.password !== confirmPassword.value) {
-      ElMessage.error('Passwords do not match');
-      return;
-    }
-    try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(user)
-      });
-      if (res.ok) {
-        router.push({ name: 'Login' });
-      } else {
-        const data = await res.json();
-        ElMessage.error(data.msg || 'Registration failed');
-      }
-    } catch (err) {
-      ElMessage.error('Network error');
-    }
-  });
+async function register() {
+  if (loading.value) return;
+  loading.value = true;
+  try {
+    const valid = await formRef.value.validate().catch(() => false);
+    if (!valid) return;
+    if (user.password !== confirmPassword.value) return reportError(new Error('Passwords do not match'));
+    await apiFetch('/api/auth/register', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(user)
+    });
+    await router.push({ name: 'Login' });
+  } catch (err) { reportError(err); }
+  finally { loading.value = false; }
 }
 </script>
 

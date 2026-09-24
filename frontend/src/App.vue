@@ -1,55 +1,51 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { apiFetch, reportError } from './api.js'
+import { drafts } from './drafts.js'
+import ErrorCenter from './components/ErrorCenter.vue'
 const router = useRouter()
 const route = useRoute()
-
-// current user info
 const currentUser = ref({ id: null, is_admin: false })
-
-onMounted(async () => {
-  const res = await fetch('/api/user/me', { credentials: 'include' })
-  if (res.ok) {
-    currentUser.value = await res.json()
+let authRequest = 0
+watch(() => route.name, async name => {
+  if (!name) return
+  const request = ++authRequest
+  const epoch = drafts.epoch
+  try {
+    const res = await apiFetch('/api/user/me', {
+      credentials: 'include', suppressStatuses: ['Login', 'Register'].includes(name) ? [401] : []
+    })
+    const user = await res.json()
+    if (request === authRequest && epoch === drafts.epoch) {
+      // Public-page probes are display-only; only a completed login/protected probe
+      // may establish the owner allowed to restore non-secret drafts.
+      if (!['Login', 'Register'].includes(name)) drafts.confirmUser(user.id, epoch)
+      currentUser.value = user
+    }
+  } catch (error) {
+    if (request === authRequest) currentUser.value = { id: null, is_admin: false }
+    reportError(error)
   }
-})
-
+}, { immediate: true })
 function handleMenuCommand(command) {
-  if (command === 'Profile' && currentUser.value.id) {
-    router.push({ name: 'Profile', params: { id: currentUser.value.id } })
-  } else {
-    router.push({ name: command })
-  }
+  if (command === 'Profile') handleProfile()
+  else router.push({ name: command })
 }
-
 function handleProfile() {
-  if (currentUser.value.id) {
-    router.push({ name: 'Profile', params: { id: currentUser.value.id } })
-  }
+  if (currentUser.value.id) router.push({ name: 'Profile', params: { id: currentUser.value.id } })
 }
-
-function logout() {
-  fetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
-    .then(res => {
-      if (res.ok) {
-        console.log('Logout successful')
-        window.location.href = '/login'
-      } else {
-        console.error('Logout failed')
-      }
-    })
-    .catch(err => {
-      console.error('Network error:', err)
-    })
+async function logout() {
+  await apiFetch('/api/auth/logout', { method: 'POST', credentials: 'include' })
+  drafts.logout()
+  currentUser.value = { id: null, is_admin: false }
+  await router.replace({ name: 'Login' })
 }
-
-// new login method
-function login() {
-  router.push({ name: 'Login' })
-}
+function login() { router.push({ name: 'Login' }) }
 </script>
 
 <template>
+  <ErrorCenter />
   <el-container style="height: 100vh; width: 100%;">
     <el-header style="display: flex; justify-content: space-between; align-items: center; padding: 0 20px; height: 60px;">
       <el-button type="text" style="font-size: 35px; font-weight: bold; margin-left: 10px;">N2Sys</el-button>
@@ -61,6 +57,7 @@ function login() {
           <el-dropdown-menu>
             <el-dropdown-item command="Summary">Summary</el-dropdown-item>
             <el-dropdown-item command="Servers">Servers</el-dropdown-item>
+            <el-dropdown-item v-if="currentUser.id" command="ApplyMachines">申请机器 · Apply Machines</el-dropdown-item>
             <el-dropdown-item command="Devices">Devices</el-dropdown-item>
             <el-dropdown-item command="Management" v-if="currentUser.is_admin">Management</el-dropdown-item>
           </el-dropdown-menu>

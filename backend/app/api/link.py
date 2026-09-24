@@ -12,16 +12,78 @@ from logger import logger
 
 router = APIRouter()
 
-def getPeer(conn : Connection, iface : Optional[ServerInterface] = None, sp : Optional[SwitchPort] = None) -> ServerInterface | SwitchPort:
-    for peer in conn.interfaces:
-        if not iface or peer.id != iface.id:
-            return peer
-    for peer in conn.switch_ports:
-        if not sp or peer.id != sp.id:
-            return peer
-    import os
-    logger.fatal(f"Peer not found for connection {conn.id}, interface {iface.id if iface else None}, switch port {sp.id if sp else None}, DB is inconsistent")
-    os._exit(1)
+def inconsistent_connection(conn_id):
+    logger.error(f"Inconsistent connection {conn_id}")
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=f"Connection {conn_id} is inconsistent: expected exactly two valid endpoints. Disconnect and reconnect its ports/interfaces, or ask an administrator to repair dangling connection references.",
+    )
+
+
+def getPeer(conn: Connection, iface: Optional[ServerInterface] = None,
+            sp: Optional[SwitchPort] = None) -> ServerInterface | SwitchPort:
+    endpoints = list(conn.interfaces) + list(conn.switch_ports)
+    source = iface if iface is not None else sp
+    if len(endpoints) != 2 or source is None:
+        raise inconsistent_connection(conn.id)
+    peers = [peer for peer in endpoints
+             if not (type(peer) is type(source) and peer.id == source.id)]
+    if len(peers) != 1:
+        raise inconsistent_connection(conn.id)
+    return peers[0]
+
+
+def endpoint_connection(endpoint):
+    if endpoint.conn_id is not None and endpoint.conn is None:
+        raise inconsistent_connection(endpoint.conn_id)
+    return endpoint.conn
+
+
+def delete_connections(db: Session, connections):
+    # Two endpoints can share one old connection. Delete it only once, and
+    # explicitly detach ALL peers (also works when SQLite FK actions are off).
+    unique = {conn.id: conn for conn in connections if conn is not None}
+    for conn in unique.values():
+        for endpoint in list(conn.interfaces) + list(conn.switch_ports):
+            endpoint.conn = None
+    db.flush()
+    for conn in unique.values():
+        db.delete(conn)
+    db.flush()
+
+
+def replace_connection(db: Session, endpoint_a, endpoint_b):
+    try:
+        delete_connections(db, [endpoint_connection(endpoint_a), endpoint_connection(endpoint_b)])
+        conn = Connection()
+        db.add(conn)
+        endpoint_a.conn = conn
+        endpoint_b.conn = conn
+        db.flush()
+        connection_id = conn.id
+        db.commit()
+        return {"connection_id": connection_id}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception("Connection replacement failed")
+        raise HTTPException(500, "Failed to replace connection; previous connections were preserved")
+
+
+def disconnect_endpoint(db: Session, endpoint):
+    conn = endpoint_connection(endpoint)
+    if conn is None:
+        return
+    try:
+        delete_connections(db, [conn])
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Connection deletion failed")
+        raise HTTPException(500, "Failed to disconnect; previous connection was preserved")
+
 
 # Connect two switch ports
 class ConnectSwitchPortsIn(BaseModel):
@@ -41,22 +103,7 @@ def connect_switch_ports(
     if not pa or not pb:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Switch port not found")
     logger.info(f"Connecting switch ports {pa.id} and {pb.id}")
-    if pa.conn:
-        db.delete(pa.conn)
-        logger.info(f"Automatically deleting connection {pa.conn.id} for switch port {pa.id}")
-    if pb.conn:
-        db.delete(pb.conn)
-        logger.info(f"Automatically deleting connection {pb.conn.id} for switch port {pb.id}")
-    db.commit()
-    db.refresh(pa)
-    db.refresh(pb)
-
-    conn = Connection()
-    db.add(conn); db.commit(); db.refresh(conn)
-    pa.conn_id = conn.id
-    pb.conn_id = conn.id
-    db.commit()
-    return {"connection_id": conn.id}
+    return replace_connection(db, pa, pb)
 
 # Connect switch port and server interface
 class ConnectPortInterfaceIn(BaseModel):
@@ -74,22 +121,7 @@ def connect_port_interface(
     if not sp or not iface:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Port or interface not found")
     logger.info(f"Connecting switch port {sp.id} and interface {iface.id}")
-    if sp.conn:
-        db.delete(sp.conn)
-        logger.info(f"Automatically deleting connection {sp.conn.id} for switch port {sp.id}")
-    if iface.conn:
-        db.delete(iface.conn)
-        logger.info(f"Automatically deleting connection {iface.conn.id} for interface {iface.id}")
-    db.commit()
-    db.refresh(sp)
-    db.refresh(iface)
-
-    conn = Connection()
-    db.add(conn); db.commit(); db.refresh(conn)
-    sp.conn_id = conn.id
-    iface.conn_id = conn.id
-    db.commit()
-    return {"connection_id": conn.id}
+    return replace_connection(db, sp, iface)
 
 # Connect two server interfaces
 class ConnectInterfacesIn(BaseModel):
@@ -109,22 +141,7 @@ def connect_interfaces(
     if not ia or not ib:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Interface not found {data.interface_a_id} {data.interface_b_id}")
     logger.info(f"Connecting interfaces {ia.id} and {ib.id}")
-    if ia.conn:
-        db.delete(ia.conn)
-        logger.info(f"Automatically deleting connection {ia.conn.id} for interface {ia.id}")
-    if ib.conn:
-        db.delete(ib.conn)
-        logger.info(f"Automatically deleting connection {ib.conn.id} for interface {ib.id}")
-    db.commit()
-    db.refresh(ia)
-    db.refresh(ib)
-
-    conn = Connection()
-    db.add(conn); db.commit(); db.refresh(conn)
-    ia.conn_id = conn.id
-    ib.conn_id = conn.id
-    db.commit()
-    return {"connection_id": conn.id}
+    return replace_connection(db, ia, ib)
 
 # Disconnect a server interface by ID
 class DisconnectInterfaceIn(BaseModel):
@@ -139,10 +156,7 @@ def disconnect_interface(
     iface = db.query(ServerInterface).filter(ServerInterface.id == data.interface_id).first()
     if not iface:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Interface not connected")
-    conn = iface.conn
-    if conn:
-        db.delete(conn)
-        db.commit()
+    disconnect_endpoint(db, iface)
 
 # Disconnect a switch port by ID
 class DisconnectSwitchPortIn(BaseModel):
@@ -157,10 +171,7 @@ def disconnect_switch_port(
     sp = db.query(SwitchPort).filter(SwitchPort.id == data.switch_port_id).first()
     if not sp:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Port not connected")
-    conn = sp.conn
-    if conn:
-        db.delete(conn)
-        db.commit()
+    disconnect_endpoint(db, sp)
 
 # List devices and their connections
 @router.get("/devices", response_model=List[Dict])
@@ -168,18 +179,18 @@ def list_devices(
     db: Session = Depends(get_db),
     user: User = Depends(getUser)
 ):
+    if not user:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
     switches = db.query(Switch).all()
     result = []
     for sw in switches:
         ports = []
         for sp in sw.ports:
             peer = None
-            if sp.conn_id:
+            if sp.conn_id is not None:
                 conn = db.query(Connection).filter(Connection.id == sp.conn_id).first()
                 if not conn:
-                    logger.fatal(f"Connection {sp.conn_id} not found for switch port {sp.id}, DB is inconsistent")
-                    import os
-                    os._exit(1)
+                    raise inconsistent_connection(sp.conn_id)
                 # look for peer switch port
                 peer_port = getPeer(conn, sp=sp)
                 if isinstance(peer_port, ServerInterface):

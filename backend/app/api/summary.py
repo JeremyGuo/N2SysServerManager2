@@ -1,3 +1,4 @@
+from activity_time import activity_iso
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -28,8 +29,11 @@ def get_summary(
                 {
                     "id": acct.id,
                     "user": acct.user.realname,
+                    "username": acct.user.username,
+                    "account_name": acct.user.account_name,
                     "sudo": acct.is_sudo,
-                    "lastLogin": acct.last_login_date.strftime("%Y-%m-%d %H:%M:%S")
+                    "isAdmin": acct.user.is_admin,
+                    "lastLogin": activity_iso(acct.last_login_date)
                 }
                 for acct in srv.accounts if acct.is_login_able
             ]
@@ -38,3 +42,13 @@ def get_summary(
         content=result,
         status_code=status.HTTP_200_OK
     )
+
+
+@router.get("/sync-errors")
+async def sync_errors(user: User = Depends(getUser)):
+    if not user:
+        raise HTTPException(401, "请先登录。")
+    if not user.is_admin:
+        raise HTTPException(403, "仅管理员可查看后台同步错误。")
+    from account_sync import get_sync_errors
+    return get_sync_errors()

@@ -1,6 +1,10 @@
 <template>
-  <div>
+  <div v-loading="loading">
     <h2>Device Connections</h2>
+    <DeviceChat />
+    <el-alert v-if="!currentUser.is_admin" title="Read-only: administrator access is required to change connections." type="info" :closable="false" />
+    <el-empty v-if="!loading && !switches.length" :description="loadFailed ? 'Device data could not be loaded. See the error details.' : 'No switches configured'" />
+    <el-button v-if="loadFailed" @click="loadDevices">Retry</el-button>
     <div v-for="sw in switches" :key="sw.id" class="switch-card">
       <el-card shadow="never" class="card-spacing">
         <h3>{{ sw.name }} (ID: {{ sw.id }})</h3>
@@ -14,6 +18,7 @@
               <div class="grid-cell">
                 <template v-if="getPort(sw, r-1, c-1)">
                   <el-button
+                    :disabled="!currentUser.is_admin"
                     :type="portButtonType(sw, r-1, c-1)"
                     size="mini"
                     @click="openPortDialog(sw, getPort(sw, r-1, c-1))"
@@ -33,7 +38,7 @@
     </div>
   </div>
   <!-- connection dialog -->
-  <el-dialog title="Port Connection" v-model="showPortDialog">
+  <el-dialog title="Port Connection" v-model="showPortDialog" @closed="clearHostPort">
     <el-radio-group v-model="connectionTypePort">
       <el-radio-button label="断开" />
       <el-radio-button label="直连" />
@@ -47,6 +52,7 @@
             :fetch-suggestions="hostQuerySearchPort"
             placeholder="Server Hostname"
             @select="handleHostSelectPort"
+            @input="clearHostPort"
           />
         </el-form-item>
         <el-form-item label="Interface">
@@ -54,6 +60,9 @@
             v-model="directConnectionPort.interfaceName"
             :fetch-suggestions="hostInterQuerySearchPort"
             placeholder="Interface (with PCI)"
+            :disabled="!selectedServerId"
+            @select="selectInterfacePort"
+            @input="selectedTargetId = null"
           />
         </el-form-item>
       </el-form>
@@ -66,6 +75,7 @@
             :fetch-suggestions="switchQuerySearchPort"
             placeholder="Switch Name"
             @select="handleSelectSwitchPort"
+            @input="clearSwitchPort"
           />
         </el-form-item>
         <el-form-item label="端口号">
@@ -78,147 +88,122 @@
     </div>
     <template #footer>
       <el-button @click="showPortDialog = false">取消</el-button>
-      <el-button type="primary" @click="savePortChanges">保存</el-button>
+      <el-button type="primary" @click="savePortChanges" :loading="saving" :disabled="!currentUser.is_admin">保存</el-button>
     </template>
   </el-dialog>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
+import { apiFetch, reportError } from '../api.js'
+import { interfaceLabel, resolveInterface } from '../selection.js'
+import DeviceChat from '../components/DeviceChat.vue'
 const switches = ref([])
-
-// 全量服务器列表，用于联想
+const currentUser = ref({ id: null, is_admin: false })
+const loading = ref(false)
+const loadFailed = ref(false)
+const saving = ref(false)
 const allServers = ref([])
-
-// 端口连接对话框相关状态
 const showPortDialog = ref(false)
 const connectionTypePort = ref('断开')
 const selectedPort = ref(null)
+const selectedServerId = ref(null)
+const selectedTargetId = ref(null)
+let hostRequest = 0
 const directConnectionPort = reactive({ host: '', interfaceName: '' })
 const targetInterfacesPort = ref([])
-// 新增：交换机连接状态
 const switchConnectionPort = reactive({ switchName: '', switchPort: null, switchId: null })
-
-onMounted(async () => {
+async function loadDevices() {
+  loading.value = true
+  loadFailed.value = false
   try {
-    const res = await fetch('/api/link/devices', { credentials: 'include' })
-    if (res.ok) {
-      switches.value = await res.json()
-    }
-    // 拉取所有 Server 用于 Host 联想
-    const sres = await fetch('/api/server/list', { credentials: 'include' })
-    if (sres.ok) allServers.value = await sres.json()
-  } catch (e) {
-    console.error('Failed to load device data', e)
-  }
+    switches.value = await (await apiFetch('/api/link/devices', { credentials: 'include' })).json()
+  } catch (error) { loadFailed.value = true; throw error }
+  finally { loading.value = false }
+}
+onMounted(async () => {
+  await Promise.all([
+    loadDevices(),
+    apiFetch('/api/user/me', { credentials: 'include' }).then(r => r.json()).then(data => { currentUser.value = data }),
+    apiFetch('/api/server/list', { credentials: 'include' }).then(r => r.json()).then(data => { allServers.value = data })
+  ])
 })
-
-// 联想搜索主机
 function hostQuerySearchPort(query, cb) {
-  cb(
-    allServers.value
-      .filter(s => s.host && s.host.toLowerCase().includes(query.toLowerCase()))
-      .map(s => ({ id: s.id, value: s.host }))
-  )
+  cb(allServers.value.filter(s => s.host?.toLowerCase().includes(query.toLowerCase())).map(s => ({ id: s.id, value: s.host })))
 }
-// 选择主机后拉取接口列表
+function clearHostPort() {
+  hostRequest++
+  selectedServerId.value = null
+  selectedTargetId.value = null
+  directConnectionPort.interfaceName = ''
+  targetInterfacesPort.value = []
+}
 async function handleHostSelectPort(item) {
+  clearHostPort()
   directConnectionPort.host = item.value
-  const res = await fetch(`/api/server/${item.id}`, { credentials: 'include' })
-  if (res.ok) {
-    const data = await res.json()
-    targetInterfacesPort.value = data.interfaces || []
-  } else {
-    targetInterfacesPort.value = []
-  }
+  selectedServerId.value = item.id
+  const request = hostRequest
+  const data = await (await apiFetch(`/api/server/${item.id}`, { credentials: 'include' })).json()
+  if (request === hostRequest && showPortDialog.value && selectedServerId.value === item.id) targetInterfacesPort.value = data.interfaces || []
 }
-// 联想搜索接口，显示名称带 PCI
 function hostInterQuerySearchPort(query, cb) {
-  cb(
-    targetInterfacesPort.value
-      .filter(i => i.interface && i.pci_address && i.interface.toLowerCase().includes(query.toLowerCase()))
-      .map(i => ({ id: i.id, value: `${i.interface} (PCI: ${i.pci_address})` }))
-  )
+  cb(targetInterfacesPort.value.filter(i => i.interface && interfaceLabel(i).toLowerCase().includes(query.toLowerCase()))
+    .map(i => ({ id: i.id, value: interfaceLabel(i) })))
 }
-// 联想搜索交换机
+function selectInterfacePort(item) { selectedTargetId.value = item.id; directConnectionPort.interfaceName = item.value }
 function switchQuerySearchPort(query, cb) {
-  cb(
-    switches.value
-      .filter(s => s.name.toLowerCase().includes(query.toLowerCase()))
-      .map(s => ({ id: s.id, value: s.name }))
-  )
+  cb(switches.value.filter(s => s.name?.toLowerCase().includes(query.toLowerCase())).map(s => ({ id: s.id, value: s.name })))
 }
-// 选择交换机
-function handleSelectSwitchPort(item) {
-  switchConnectionPort.switchName = item.value
-  switchConnectionPort.switchId = item.id
-}
-// 打开端口对话框
+function clearSwitchPort() { switchConnectionPort.switchId = null; switchConnectionPort.switchPort = null }
+function handleSelectSwitchPort(item) { clearSwitchPort(); switchConnectionPort.switchName = item.value; switchConnectionPort.switchId = item.id }
 function openPortDialog(sw, port) {
+  if (!currentUser.value.is_admin || !port) return
   selectedPort.value = port
   showPortDialog.value = true
   connectionTypePort.value = port.connected_to ? '断开' : '直连'
+  clearHostPort()
   directConnectionPort.host = ''
-  directConnectionPort.interfaceName = ''
-  targetInterfacesPort.value = []
-  switchConnectionPort.switchName = ''
-  switchConnectionPort.switchPort = null
-  switchConnectionPort.switchId = null
+  Object.assign(switchConnectionPort, { switchName: '', switchPort: null, switchId: null })
 }
-// 保存端口连接变化
 async function savePortChanges() {
-  if (!selectedPort.value) return showPortDialog.value = false
-  if (connectionTypePort.value === '直连') {
-    const tgt = targetInterfacesPort.value.find(i => directConnectionPort.interfaceName.includes(i.interface))
-    if (!tgt) return
-    await fetch('/api/link/switch_port/interface/connect', {
-      method: 'POST', credentials: 'include', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ switch_port_id: selectedPort.value.id, interface_id: tgt.id })
-    })
-  } else if (connectionTypePort.value === '交换机') {
-    if (!switchConnectionPort.switchId || switchConnectionPort.switchPort === null) {
-      return ElMessage.error('请选择交换机和端口')
+  if (!currentUser.value.is_admin || !selectedPort.value || saving.value) return
+  saving.value = true
+  try {
+    let url, body
+    if (connectionTypePort.value === '直连') {
+      const host = allServers.value.find(s => s.id === selectedServerId.value && s.host === directConnectionPort.host)
+      const target = resolveInterface(targetInterfacesPort.value, directConnectionPort.interfaceName, selectedTargetId.value)
+      if (!host || !target) return ElMessage.warning('Select a server and an exact interface (including PCI) from the suggestions.')
+      url = '/api/link/switch_port/interface/connect'
+      body = { switch_port_id: selectedPort.value.id, interface_id: target.id }
+    } else if (connectionTypePort.value === '交换机') {
+      const sw = switches.value.find(s => s.id === switchConnectionPort.switchId && s.name === switchConnectionPort.switchName)
+      const portNumber = Number(switchConnectionPort.switchPort)
+      const port = Number.isInteger(portNumber) && portNumber > 0 && sw?.ports?.find(p => p.phy_col * sw.num_row + p.phy_row + 1 === portNumber)
+      if (!port || port.id === selectedPort.value.id) return ElMessage.warning('请选择有效的目标交换机和不同的端口')
+      url = '/api/link/switch_port/connect'
+      body = { port_a_id: selectedPort.value.id, port_b_id: port.id }
+    } else {
+      url = '/api/link/switch_port/disconnect'
+      body = { switch_port_id: selectedPort.value.id }
     }
-    const sw = switches.value.find(s => s.id === switchConnectionPort.switchId)
-    const port = sw.ports.find(
-      p => p.phy_col * sw.num_row + p.phy_row + 1 === Number(switchConnectionPort.switchPort)
-    )
-    if (!port) return ElMessage.error('交换机端口未找到')
-    await fetch('/api/link/switch_port/connect', {
-      method: 'POST', credentials: 'include', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ port_a_id: selectedPort.value.id, port_b_id: port.id })
-    })
-  } else {
-    await fetch('/api/link/switch_port/disconnect', {
-      method: 'POST', credentials: 'include', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ switch_port_id: selectedPort.value.id })
-    })
-  }
-  showPortDialog.value = false
-  location.reload()
+    await apiFetch(url, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    showPortDialog.value = false
+    ElMessage.success('Connection updated')
+    await loadDevices()
+  } catch (error) { reportError(error) }
+  finally { saving.value = false }
 }
-
-/**
- * Find port object for a given switch at row r and col c
- */
-function getPort(sw, r, c) {
-  return sw.ports.find(p => p.phy_row === r && p.phy_col === c)
-}
-// Get display label for a port button based on connection status
+function getPort(sw, r, c) { return sw.ports?.find(p => p.phy_row === r && p.phy_col === c) }
 function portLabel(sw, r, c) {
-  const port = getPort(sw, r, c)
-  if (!port.connected_to) return 'Unconnected'
-  const peer = port.connected_to
-  if (peer.type === 'interface') {
-    return `${peer.server_host}:${peer.name}`
-  }
-  return peer.name
+  const peer = getPort(sw, r, c)?.connected_to
+  if (!peer) return 'Unconnected'
+  return peer.type === 'interface' ? `${peer.server_host}:${peer.name}` : peer.name
 }
-// Determine button type: default grey, primary blue for switch, success green for server
 function portButtonType(sw, r, c) {
-  const port = getPort(sw, r, c)
-  if (!port || !port.connected_to) return 'default'
-  return port.connected_to.type === 'switch_port' ? 'primary' : 'success'
+  const peer = getPort(sw, r, c)?.connected_to
+  return !peer ? 'default' : peer.type === 'switch_port' ? 'primary' : 'success'
 }
 </script>
 

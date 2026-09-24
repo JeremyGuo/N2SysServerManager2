@@ -5,21 +5,34 @@ from fastapi.responses import JSONResponse
 
 from app.database import get_db, Server, ServerTag, User, ServerInterface, InterfaceTag, Connection, SwitchPort
 from validator import getUserAdmin, getUser
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+import os
+
+from app.hardware_store import hardware_for_servers, hardware_for_server
 
 router = APIRouter()
 
+class ServerCreate(BaseModel):
+    host: str = Field(min_length=1, max_length=253, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9.:-]*$")
+    port: int = Field(ge=1, le=65535)
+    proxyServerId: int | None = None
+    isGateway: bool = False
+
 @router.post("/add", response_model=dict)
 def add_server(
-    server_in: dict,
+    server_in: ServerCreate,
     admin: User = Depends(getUserAdmin),
     db: Session = Depends(get_db)
 ):
+    if server_in.proxyServerId is not None and not db.get(Server, server_in.proxyServerId):
+        raise HTTPException(404, "所选代理服务器不存在，请刷新服务器列表。")
+    if db.query(Server).filter_by(host=server_in.host, port=server_in.port).first():
+        raise HTTPException(409, "相同主机和 SSH 端口的服务器已存在。")
     srv = Server(
-        host=server_in["host"],
-        port=server_in["port"],
-        proxy_server_id=server_in.get("proxyServerId", None),
-        is_gateway=server_in.get("isGateway", False)
+        host=server_in.host,
+        port=server_in.port,
+        proxy_server_id=server_in.proxyServerId,
+        is_gateway=server_in.isGateway
     )
     db.add(srv); db.commit(); db.refresh(srv)
     return {"id": srv.id, "host": srv.host, "port": srv.port, "isGateway": srv.is_gateway}
@@ -56,6 +69,7 @@ def list_servers(
     if not user:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
     servers = db.query(Server).all()
+    hardware = hardware_for_servers(db, [s.id for s in servers])
     return [
         {
             "id": s.id,
@@ -64,6 +78,7 @@ def list_servers(
             "gateway": s.is_gateway,
             "os": s.os_version,
             "kernel": s.kernel_version,
+            "hardware": hardware[s.id],
             "tags": [t.tag for t in s.tags],
             "proxy": {"id": s.proxy_server.id, "host": s.proxy_server.host, "port": s.proxy_server.port} if s.proxy_server else None
         }
@@ -92,6 +107,7 @@ def get_server_detail(
         "is_separated_home": srv.is_mounted_home,
         "os_version": srv.os_version,
         "kernel_version": srv.kernel_version,
+        "hardware": hardware_for_server(db, srv.id),
         "ipmi": srv.ipmi,
         "tags": [{"id": t.id, "tag": t.tag} for t in srv.tags],
         "interfaces": []
@@ -222,9 +238,19 @@ def update_ipmi(
     db.commit()
     return {"msg": "IPMI updated"}
 
+class ServerRefreshIn(BaseModel):
+    server_id: int
+
 @router.post("/refresh", response_model=dict)
-def refresh_server(
-    admin: User = Depends(getUserAdmin)
+async def refresh_server(
+    data: ServerRefreshIn,
+    admin: User = Depends(getUserAdmin),
+    db: Session = Depends(get_db),
 ):
-    # TODO: 调用实际刷新逻辑
-    return {"msg": "Server refresh triggered"}
+    if not db.get(Server, data.server_id):
+        raise HTTPException(404, "服务器不存在。")
+    if os.getenv("SYNC_ENABLED", "true").lower() != "true":
+        raise HTTPException(503, "后台 SSH 同步已关闭，请管理员设置 SYNC_ENABLED=true 后重启服务。")
+    from account_sync import request_server_refresh
+    request_server_refresh(data.server_id)
+    return {"msg": "已请求刷新，将在下一次同步周期采集（约30秒）；请稍后刷新页面查看状态。"}

@@ -1,218 +1,130 @@
 <template>
   <div>
-    <el-table 
-      ref="tableRef"
-      :data="tableData" 
-      :span-method="spanMethod" 
-      :fit="true" 
-      style="width: 90%; margin: auto;" 
-      :default-sort="{ prop: 'host', order: 'ascending' }"
-      :cell-class-name="loginCellClass"
-    >
-      <!-- Grouped Host columns -->
+    <section class="summary-tools">
+      <el-switch v-model="hideInactiveAdmins" active-text="隐藏长期未登录的管理员账号" />
+      <label>未登录天数：<el-input-number v-model="inactiveDays" :min="1" :max="3650" :precision="0" /></label>
+      <span>已隐藏 {{ hiddenCount }} 个账号；仅影响此表，不撤销权限。</span>
+      <el-button @click="hideInactiveAdmins = false">显示全部管理员</el-button>
+      <el-button :loading="loading" @click="fetchSummary">刷新</el-button>
+      <p>管理员指系统管理员（不是仅拥有某台服务器 sudo 的用户），按各服务器的最后活动时间判断（登录/退出/仍在线）；时间按浏览器时区显示。每次进入默认开启，显示全部仅本次有效。</p>
+    </section>
+    <el-alert v-for="error in syncErrors" :key="`${error.scope}-${error.id}`" type="error" :closable="false" show-icon
+      :title="`后台同步失败 · ${error.scope} ${error.id ?? ''}`" :description="`${error.message}（${error.occurred_at}）`" class="sync-error" />
+    <el-table ref="tableRef" :data="tableData" :span-method="spanMethod" style="width:90%;margin:auto;" :default-sort="{prop:'host',order:'ascending'}">
       <el-table-column label="Host">
-        <el-table-column prop="host" label="Host Name" sortable />
-        <el-table-column prop="status" label="Server Status" :width="120"/>
-        <el-table-column 
-          prop="isGateway" 
-          label="Is Gateway" 
-          :width="120"
-          :filters="gatewayFilters"
-          :filter-method="filterGateway"
-          :filtered-value="[false]"
-        >
-          <template #default="{ row }">
-            {{ row.isGateway ? 'Yes' : 'No' }}
-          </template>
+        <el-table-column prop="host" label="Host Name" sortable>
+          <template #default="{row}"><router-link :to="`/server/${row.server_id}`">{{ row.host }}</router-link></template>
         </el-table-column>
-        <el-table-column prop="isMounted" label="Is Mounted" :width="120"/>
+        <el-table-column prop="status" label="Server Status" width="150" />
+        <el-table-column prop="isGateway" label="Is Gateway" width="130" :filters="gatewayFilters" :filter-method="filterGateway" :filtered-value="[false]">
+          <template #default="{row}">{{ row.isGateway ? 'Yes' : 'No' }}</template>
+        </el-table-column>
+        <el-table-column prop="isMounted" label="Is Mounted" width="120" />
       </el-table-column>
-      <!-- Other columns -->
-      <el-table-column prop="user" label="User" />
-      <el-table-column label="Sudo" :width="80">
-        <template #default="{ row }">
-          <el-switch
-            v-model="row.sudo"
-            @change="handleSudoChange(row)"
-            :disabled="loading || !currentUser.isRoot"
-          />
+      <el-table-column prop="user" label="User">
+        <template #default="{row}">{{ row.user }} <el-tag v-if="row.isAdmin" size="small">管理员</el-tag></template>
+      </el-table-column>
+      <el-table-column prop="accountName" label="Linux Account Name" min-width="150" />
+      <el-table-column label="Sudo" width="80">
+        <template #default="{row}">
+          <el-switch v-if="row.account_id" :model-value="row.sudo" @change="handleSudoChange(row)" :disabled="loading || !currentUser.is_admin || row.isGateway" />
+          <span v-else>—</span>
         </template>
       </el-table-column>
-      <el-table-column 
-        prop="lastLogin" 
-        label="Last Login"
-      >
-        <template #default="{ row }">
-          <span :style="getLoginStyle(row.lastLogin)">{{ row.lastLogin }}</span>
-        </template>
+      <el-table-column prop="lastLogin" label="Last Activity">
+        <template #default="{row}"><span :style="getLoginStyle(row.lastLogin)" :title="row.lastLogin || '未知时间'">{{ formatActivity(row.lastLogin) }}</span></template>
       </el-table-column>
-      <el-table-column v-if="currentUser.isRoot" label="Actions">
-        <template #default="{ row }">
-          <el-button
-            type="warning"
-            size="small"
-            @click="revokePermission(row)"
-            :disabled="loading"
-          >
-            Revoke
-          </el-button>
-        </template>
+      <el-table-column v-if="currentUser.is_admin" label="Actions">
+        <template #default="{row}"><el-button v-if="row.account_id" type="warning" size="small" @click="revokePermission(row)" :disabled="loading || row.isGateway">Revoke</el-button></template>
       </el-table-column>
     </el-table>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { apiFetch, reportError } from '../api'
+import { isInactiveAdmin, summaryRows, summaryPreferences, activityTimestamp, formatActivity } from '../summaryRows'
 
-// current user context
-const currentUser = ref({ isRoot: true });
-// loading flag disables UI during updates
-const loading = ref(false);
+const currentUser = ref({ is_admin: false })
+const loading = ref(false)
+const servers = ref([])
+const syncErrors = ref([])
+const hideInactiveAdmins = ref(true)
+const inactiveDays = ref(30)
+const now = ref(Date.now())
+const tableRef = ref(null)
+let timer
+let disposed = false
+let preferenceKey
+const threshold = computed(() => inactiveDays.value || 30)
+const hiddenCount = computed(() => hideInactiveAdmins.value ? servers.value.reduce((n, s) => n + s.users.filter(u => isInactiveAdmin(u, threshold.value, now.value)).length, 0) : 0)
+const tableData = computed(() => summaryRows(servers.value, hideInactiveAdmins.value, threshold.value, now.value))
+const gatewayFilters = [{ text: 'Gateway', value: true }, { text: 'Not Gateway', value: false }]
+const filterGateway = (value, row) => row.isGateway === value
 
-// sample servers with nested users
-const servers = ref([
-  {
-    host: 'dl1', status: 'Online', isGateway: true, isMounted: true,
-    users: [
-      { id: 1, user: 'alice', sudo: true, lastLogin: '2025-05-18 08:15:00' },
-      { id: 2, user: 'bob', sudo: false, lastLogin: '2025-05-17 16:42:10' }
-    ]
-  }
-]);
-
-// flatten servers->rows for table
-const tableData = computed(() =>
-  servers.value.flatMap(server =>
-    server.users.map(u => ({
-      host: server.host,
-      status: server.status,
-      isGateway: server.isGateway,
-      isMounted: server.isMounted,
-      account_id: u.id,
-      user: u.user,
-      sudo: u.sudo,
-      lastLogin: u.lastLogin
-    }))
-  )
-);
-
-// filters for gateway column
-const gatewayFilters = [
-  { text: 'Gateway', value: true },
-  { text: 'Not Gateway', value: false }
-];
-
-// filter method for gateway
-function filterGateway(value, row) {
-  return row.isGateway === value;
+watch(inactiveDays, () => {
+  if (!preferenceKey) return
+  try { localStorage.setItem(preferenceKey, JSON.stringify({days: threshold.value})) }
+  catch (error) { reportError(new Error('无法保存表格筛选偏好：浏览器存储不可用。')) }
+})
+function spanMethod({row, column, rowIndex}) {
+  if (!['host', 'status', 'isGateway', 'isMounted'].includes(column.property)) return
+  const data = tableRef.value?.store.states.data.value || tableData.value
+  if (rowIndex > 0 && data[rowIndex - 1].server_id === row.server_id) return {rowspan:0, colspan:0}
+  let count = 1
+  while (rowIndex + count < data.length && data[rowIndex + count].server_id === row.server_id) count++
+  return {rowspan:count, colspan:1}
 }
-
-// add a ref to access the table's internal data after sort/filter
-const tableRef = ref(null);
-
-// merge rows when host-level fields are the same
-function spanMethod({ row, column, rowIndex }) {
-  const fields = ['host', 'status', 'isGateway', 'isMounted'];
-  if (!fields.includes(column.property)) return;
-  // use the table's rendered data (after sorting/filtering) if available
-  const data = tableRef.value?.store.states.data.value || tableData.value;
-  // skip if same as previous
-  if (rowIndex > 0) {
-    const prev = data[rowIndex - 1];
-    if (fields.every(f => prev[f] === row[f])) {
-      return { rowspan: 0, colspan: 0 };
-    }
-  }
-  // count how many following rows match
-  let rowSpan = 1;
-  for (let i = rowIndex + 1; i < data.length; i++) {
-    const next = data[i];
-    if (fields.every(f => next[f] === row[f])) {
-      rowSpan++;
-    } else {
-      break;
-    }
-  }
-  return { rowspan: rowSpan, colspan: 1 };
+function getLoginStyle(date) {
+  if (!date || !Number.isFinite(activityTimestamp(date))) return {}
+  const days = (now.value - activityTimestamp(date)) / 86400000
+  return {color: days > 25 ? '#c45656' : days > 7 ? '#b88230' : '#529b2e'}
 }
-
-// 根据 lastLogin 与当前日期差异返回样式
-function getLoginStyle(dateStr) {
-  const diffDays = (Date.now() - new Date(dateStr).getTime()) / 86400000;
-  if (diffDays > 25) return { color: 'red' };
-  if (diffDays > 7)  return { color: 'orange' };
-  return { color: 'green' };
-}
-
-// 给 lastLogin 单元格分配背景色 class
-function loginCellClass({ row, column, rowIndex, columnIndex }) {
-  if (column.property !== 'lastLogin') return '';
-  const diffDays = (Date.now() - new Date(row.lastLogin).getTime()) / 86400000;
-  if (diffDays > 25) return 'login-cell-red';
-  if (diffDays > 7)  return 'login-cell-yellow';
-  return 'login-cell-green';
-}
-
-// toggle sudo permission
 async function handleSudoChange(row) {
-  loading.value = true;
+  loading.value = true
   try {
-    const url = `/api/account/${row.account_id}/sudo`;
-    const res = await fetch(url, { method: 'PUT', credentials: 'include' });
-    if (!res.ok) {
-        console.error('Failed to update sudo');
-        row.sudo = !row.sudo; // revert change
-    }
-  } catch (e) {
-    // handle error
-    console.error(e);
-    row.sudo = !row.sudo; // revert change
-  } finally {
-    loading.value = false;
-  }
+    await apiFetch(`/api/account/${row.account_id}/sudo`, {method:'PUT'})
+    await fetchSummary()
+  } finally { loading.value = false }
 }
-
-// revoke user permission
 async function revokePermission(row) {
-  loading.value = true;
+  loading.value = true
   try {
-    const url = `/api/account/${row.account_id}/revoke`;
-    const res = await fetch(url, { method: 'PUT', credentials: 'include' });
-    if (res.ok) {
-      // delete this user from servers data
-      const srv = servers.value.find(s => s.host === row.host);
-      if (srv) {
-        srv.users = srv.users.filter(u => u.id !== row.account_id);
-      }
-    } else {
-      console.error('Revoke failed');
-    }
-  } catch (e) {
-    console.error(e);
-  } finally {
-    loading.value = false;
-  }
+    await apiFetch(`/api/account/${row.account_id}/revoke`, {method:'PUT'})
+    await fetchSummary()
+  } finally { loading.value = false }
 }
-
-// fetch summary data on route enter
-const router = useRouter();
+async function fetchSyncErrors() {
+  if (!currentUser.value.is_admin) return
+  syncErrors.value = await (await apiFetch('/api/summary/sync-errors')).json()
+}
 async function fetchSummary() {
-    console.log('Fetching summary data...');
-    const res = await fetch('/api/summary/get', { credentials: 'include' });
-    if (!res.ok) {
-        router.push({ name: 'Login' });
-        return;
-    }
-    const data = await res.json();
-    servers.value = data;
+  loading.value = true
+  try {
+    servers.value = await (await apiFetch('/api/summary/get')).json()
+    now.value = Date.now()
+    await fetchSyncErrors()
+  } finally { loading.value = false }
 }
-onMounted(fetchSummary);
+onMounted(async () => {
+  currentUser.value = await (await apiFetch('/api/user/me')).json()
+  preferenceKey = `n2sys-summary-filter-${currentUser.value.id}`
+  try {
+    const saved = JSON.parse(localStorage.getItem(preferenceKey) || 'null')
+    // Each visit defaults to hiding, even if older versions stored hide:false.
+    const preferences = summaryPreferences(saved)
+    hideInactiveAdmins.value = preferences.hide
+    inactiveDays.value = preferences.days
+  } catch { reportError(new Error('无法读取表格筛选偏好，已使用默认值。')) }
+  await fetchSummary()
+  if (disposed) return
+  timer = setInterval(() => { now.value = Date.now(); fetchSyncErrors().catch(reportError) }, 30000)
+})
+onUnmounted(() => { disposed = true; clearInterval(timer) })
 </script>
-
-<style>
-.login-cell-red    { background-color: #ffd6d6; }
-.login-cell-yellow { background-color: #fff5cc; }
-.login-cell-green  { background-color: #e6ffed; }
+<style scoped>
+.summary-tools {width:90%;margin:12px auto 20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;text-align:left;}
+.summary-tools p {width:100%;margin:0;font-size:13px;color:#606266;}
+.sync-error {width:90%;margin:8px auto;}
 </style>
